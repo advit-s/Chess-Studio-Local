@@ -1,0 +1,10 @@
+node_modules
+dist
+.vite
+.browser-tmp
+playwright-report
+test-results
+public/engine/*.js
+public/engine/*.wasm
+*.log
+.DS_Store

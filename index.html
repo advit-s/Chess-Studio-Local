@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#101419" />
+    <meta name="description" content="A private, offline-first chess analysis studio powered by Stockfish." />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
+    <title>Chess Studio Local</title>
+    <script>
+      try {
+        const saved = JSON.parse(localStorage.getItem('chess-studio-local-settings-v2') || '{}');
+        document.documentElement.dataset.theme = saved.theme === 'light' ? 'light' : 'dark';
+      } catch {
+        document.documentElement.dataset.theme = 'dark';
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

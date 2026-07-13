@@ -1,0 +1,32 @@
+{
+  "name": "chess-studio-local",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "scripts": {
+    "postinstall": "node scripts/prepare-engine.mjs",
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "serve": "node scripts/serve-dist.mjs",
+    "test": "vitest run",
+    "test:e2e": "node scripts/run-e2e.mjs",
+    "smoke:engine": "node scripts/smoke-engine.mjs"
+  },
+  "dependencies": {
+    "chess.js": "1.4.0",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "stockfish": "18.0.8"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1",
+    "@types/node": "22.20.1",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "5.1.4",
+    "typescript": "5.9.3",
+    "vite": "7.3.6",
+    "vitest": "4.1.0"
+  }
+}

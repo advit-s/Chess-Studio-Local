@@ -1,0 +1,13 @@
+{
+  "name": "Chess Studio Local",
+  "short_name": "Chess Studio",
+  "description": "Private offline chess analysis and training powered by Stockfish.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0b0e12",
+  "theme_color": "#101419",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
