@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Chess, type Square } from 'chess.js';
 import { pieceGlyph } from '../lib/chessUtils';
+import { validatePosition, hasValidKings } from '../lib/fenValidation';
 import { loadScanHistory, saveScan, deleteScan, clearScanHistory, type ScannedPosition } from '../lib/scanHistory';
 
 interface Props {
@@ -19,6 +20,42 @@ interface Corners {
   bottomRight: CornerPoint;
 }
 
+// ---------------------------------------------------------------------------
+// Letterbox coordinate mapping
+// ---------------------------------------------------------------------------
+
+/**
+ * Compute the rendered rectangle of an image displayed with object-fit: contain
+ * inside a container. Returns the offset and scale relative to the container.
+ */
+function getContainedImageRect(
+  containerW: number,
+  containerH: number,
+  imageW: number,
+  imageH: number,
+): { offsetX: number; offsetY: number; renderW: number; renderH: number } {
+  const containerAspect = containerW / containerH;
+  const imageAspect = imageW / imageH;
+  let renderW: number, renderH: number;
+
+  if (imageAspect > containerAspect) {
+    // Image is wider — letterbox top/bottom
+    renderW = containerW;
+    renderH = containerW / imageAspect;
+  } else {
+    // Image is taller — letterbox left/right
+    renderH = containerH;
+    renderW = containerH * imageAspect;
+  }
+
+  return {
+    offsetX: (containerW - renderW) / 2,
+    offsetY: (containerH - renderH) / 2,
+    renderW,
+    renderH,
+  };
+}
+
 export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToast }: Props) {
   // Image & Upload state
   const [imageSrc, setImageSrc] = useState<string>('');
@@ -35,18 +72,24 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
   const [draggingCorner, setDraggingCorner] = useState<keyof Corners | null>(null);
   const [progressStep, setProgressStep] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [detectionConfidence, setDetectionConfidence] = useState<number>(100);
+  const [boardDetectionQuality, setBoardDetectionQuality] = useState<'good' | 'fair' | 'manual'>('manual');
 
   // Editor board state
   const [grid, setGrid] = useState<string[]>(Array(64).fill('empty'));
   const [originalGrid, setOriginalGrid] = useState<string[]>(Array(64).fill('empty'));
   const [confidences, setConfidences] = useState<number[]>(Array(64).fill(100));
+  const [modelLoaded, setModelLoaded] = useState<boolean | null>(null);
+  const [modelError, setModelError] = useState<string | null>(null);
   const [boardOrientation, setBoardOrientation] = useState<'white' | 'black'>('white');
   const [selectedPalettePiece, setSelectedPalettePiece] = useState<string>('empty');
 
+  // Drag & drop between squares
+  const [dragSourceIdx, setDragSourceIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+
   // History / Undo / Redo
-  const [history, setHistory] = useState<string[][]>([]);
-  const [historyIndex, setHistoryIndex] = useState<number>(-1);
+  const [history, setHistory] = useState<string[][]>([Array(64).fill('empty')]);
+  const [historyIndex, setHistoryIndex] = useState<number>(0);
   const [historyList, setHistoryList] = useState<ScannedPosition[]>([]);
   const [notes, setNotes] = useState<string>('');
 
@@ -64,70 +107,108 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
   const workerRef = useRef<Worker | null>(null);
   const croppedCanvasRef = useRef<HTMLCanvasElement>(null);
   const rawImagePixelsRef = useRef<ImageData | null>(null);
+  const mountedRef = useRef<boolean>(true);
+  const requestIdRef = useRef<number>(0);
+
+  // Dragging corner: use ref to avoid stale closure
+  const cornersRef = useRef<Corners>(corners);
+  cornersRef.current = corners;
 
   // Load IndexedDB History on Mount
   const loadHistory = useCallback(async () => {
     const list = await loadScanHistory();
-    setHistoryList(list);
+    if (mountedRef.current) setHistoryList(list);
   }, []);
 
   useEffect(() => {
     loadHistory();
   }, [loadHistory]);
 
-  // Web Worker Initialization
+  // Track mount state for safe setState
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  // Web Worker Initialization — use scanWorker.js (not the deleted ocrWorker.js)
   useEffect(() => {
     const base = new URL(import.meta.env.BASE_URL, window.location.href);
-    const workerUrl = new URL('ocrWorker.js', base).toString();
+    const workerUrl = new URL('scanWorker.js', base).toString();
     const worker = new Worker(workerUrl);
     workerRef.current = worker;
 
     worker.onmessage = (event) => {
-      const { status, step, result, message } = event.data;
+      if (!mountedRef.current) return; // ignore after unmount
+
+      const { requestId, status, step, result, message } = event.data;
+
+      // Ignore stale responses
+      if (requestId !== requestIdRef.current) return;
 
       if (status === 'progress') {
         setProgressStep(step);
       } else if (status === 'complete') {
         setIsProcessing(false);
         setProgressStep('');
+
         if (event.data.action === 'detect') {
           setCorners(result.corners);
-          if (result.success) {
-            setDetectionConfidence(result.confidence);
-            showToast(`Board auto-detected with ${result.confidence}% confidence`);
-          } else {
-            setDetectionConfidence(40);
-            showToast('Automatic board detection failed. Please crop manually.');
-          }
-          // Trigger piece recognition for detected/adjusted corners
-          if (rawImagePixelsRef.current) {
-            recognizePieces(rawImagePixelsRef.current, result.corners);
-          }
-        } else if (event.data.action === 'recognize') {
-          setGrid(result.grid);
-          setOriginalGrid(result.grid);
-          setConfidences(result.confidences);
-          setBoardOrientation(result.detectedOrientation);
-          
-          // Reset history stack
-          setHistory([result.grid]);
-          setHistoryIndex(0);
+          setBoardDetectionQuality(result.quality);
 
-          // Render cropped board to preview canvas
+          if (result.found) {
+            showToast(
+              result.quality === 'good'
+                ? 'Board detected — adjust corners if needed'
+                : 'Board region estimated — please adjust corners manually'
+            );
+          } else {
+            showToast('Could not detect board — please crop manually');
+          }
+
+          // Generate warp preview and recognize pieces
+          if (rawImagePixelsRef.current) {
+            triggerRecognize(rawImagePixelsRef.current, result.corners);
+          }
+        } else if (event.data.action === 'warp') {
           renderCroppedCanvas(result.warpedPixels, result.warpedSize);
-          showToast('Piece recognition complete');
+        } else if (event.data.action === 'recognize') {
+          setModelLoaded(result.modelLoaded);
+          setModelError(result.modelError || null);
+
+          if (result.modelLoaded) {
+            setGrid(result.grid);
+            setOriginalGrid(result.grid);
+            setConfidences(result.confidences);
+            setHistory([result.grid]);
+            setHistoryIndex(0);
+
+            const validation = validatePosition(result.grid);
+            if (validation.valid) {
+              showToast('Piece recognition complete (experimental)');
+            } else {
+              showToast('Auto-recognition complete with warnings/errors.');
+            }
+          } else {
+            // Model not found or failed, keep empty/manual layout
+            setConfidences(Array(64).fill(100));
+          }
+
+          renderCroppedCanvas(result.warpedPixels, result.warpedSize);
         }
       } else if (status === 'error') {
         setIsProcessing(false);
         setProgressStep('');
-        setErrorMsg(message || 'OCR Processing failed');
+        setErrorMsg(message || 'Processing failed');
       }
     };
 
     return () => {
       worker.terminate();
     };
-  }, [showToast]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Warp rendering helper
   const renderCroppedCanvas = (pixels: Uint8ClampedArray, size: number) => {
@@ -142,14 +223,29 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
     ctx.putImageData(imgData, 0, 0);
   };
 
-  // Recognize pieces trigger
-  const recognizePieces = (pixels: ImageData, targetCorners: Corners) => {
+  // Trigger perspective warp in the worker (no piece classification)
+  const triggerWarp = (pixels: ImageData, targetCorners: Corners) => {
     if (!workerRef.current) return;
+    const id = ++requestIdRef.current;
+    setIsProcessing(true);
+    workerRef.current.postMessage({
+      action: 'warp',
+      requestId: id,
+      imageData: pixels,
+      corners: targetCorners,
+    });
+  };
+
+  // Trigger perspective warp and piece recognition in the worker
+  const triggerRecognize = (pixels: ImageData, targetCorners: Corners) => {
+    if (!workerRef.current) return;
+    const id = ++requestIdRef.current;
     setIsProcessing(true);
     workerRef.current.postMessage({
       action: 'recognize',
+      requestId: id,
       imageData: pixels,
-      corners: targetCorners
+      corners: targetCorners,
     });
   };
 
@@ -164,32 +260,39 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
       return;
     }
 
+    // Cancel any in-flight recognition
+    requestIdRef.current++;
     setErrorMsg('');
+
     const reader = new FileReader();
     reader.onload = (e) => {
       const src = e.target?.result as string;
+      if (!mountedRef.current) return;
       setImageSrc(src);
 
-      // Load image into HTMLImageElement to read pixels
       const img = new Image();
       img.onload = () => {
-        setImageDimensions({ width: img.width, height: img.height });
-        
-        // Extract ImageData using canvas
+        if (!mountedRef.current) return;
+        const width = img.naturalWidth || img.width;
+        const height = img.naturalHeight || img.height;
+        setImageDimensions({ width, height });
+
         const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
+        canvas.width = width;
+        canvas.height = height;
         const ctx = canvas.getContext('2d');
         if (ctx) {
-          ctx.drawImage(img, 0, 0);
-          const raw = ctx.getImageData(0, 0, img.width, img.height);
+          ctx.drawImage(img, 0, 0, width, height);
+          const raw = ctx.getImageData(0, 0, width, height);
           rawImagePixelsRef.current = raw;
 
-          // Request Board Detection
+          // Request board detection
+          const id = ++requestIdRef.current;
           setIsProcessing(true);
           workerRef.current?.postMessage({
             action: 'detect',
-            imageData: raw
+            requestId: id,
+            imageData: raw,
           });
         }
       };
@@ -214,6 +317,7 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
     };
     window.addEventListener('paste', handlePaste);
     return () => window.removeEventListener('paste', handlePaste);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Grid editing helpers
@@ -253,15 +357,53 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
     updateGridState(originalGrid);
   };
 
+  // Drag & drop between squares
+  const handleSquareDragStart = (gridIdx: number) => (e: React.DragEvent) => {
+    if (grid[gridIdx] === 'empty') {
+      e.preventDefault();
+      return;
+    }
+    setDragSourceIdx(gridIdx);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(gridIdx));
+  };
+
+  const handleSquareDragOver = (gridIdx: number) => (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverIdx(gridIdx);
+  };
+
+  const handleSquareDragLeave = () => {
+    setDragOverIdx(null);
+  };
+
+  const handleSquareDrop = (targetIdx: number) => (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOverIdx(null);
+    const sourceIdx = dragSourceIdx;
+    setDragSourceIdx(null);
+
+    if (sourceIdx === null || sourceIdx === targetIdx) return;
+
+    const nextGrid = [...grid];
+    nextGrid[targetIdx] = nextGrid[sourceIdx];
+    nextGrid[sourceIdx] = 'empty';
+    updateGridState(nextGrid);
+  };
+
+  const handleSquareDragEnd = () => {
+    setDragSourceIdx(null);
+    setDragOverIdx(null);
+  };
+
   // FEN builders
   const generateFenString = useCallback(() => {
-    let fenRows: string[] = [];
-    // Iterate ranks 8 down to 1
+    const fenRows: string[] = [];
     for (let r = 0; r < 8; r++) {
       let emptyCount = 0;
       let rowStr = '';
       for (let c = 0; c < 8; c++) {
-        // Handle orientation mapping
         const idx = boardOrientation === 'white' ? (r * 8 + c) : ((7 - r) * 8 + (7 - c));
         const piece = grid[idx];
         if (piece === 'empty') {
@@ -305,7 +447,6 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
       const chess = new Chess(fen.trim());
       const nextGrid = Array(64).fill('empty');
       const board = chess.board();
-      // Read chess.js board to grid
       for (let r = 0; r < 8; r++) {
         for (let c = 0; c < 8; c++) {
           const piece = board[r][c];
@@ -317,7 +458,6 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
       }
       updateGridState(nextGrid);
 
-      // Parse configuration fields
       const parts = fen.trim().split(/\s+/);
       setTurn((parts[1] === 'b' ? 'b' : 'w'));
       setCastling({
@@ -335,7 +475,7 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
     }
   };
 
-  // Drag handles management
+  // Drag handles management — FIXED: use letterbox-aware coordinate mapping
   const handlePointerDown = (corner: keyof Corners) => (e: React.PointerEvent) => {
     e.preventDefault();
     setDraggingCorner(corner);
@@ -343,10 +483,23 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
 
   const handlePointerMove = (e: React.PointerEvent) => {
     if (!draggingCorner || !imageContainerRef.current) return;
-    const rect = imageContainerRef.current.getBoundingClientRect();
-    // Normalize coordinates back to original image size
-    const x = Math.max(0, Math.min(imageDimensions.width, ((e.clientX - rect.left) / rect.width) * imageDimensions.width));
-    const y = Math.max(0, Math.min(imageDimensions.height, ((e.clientY - rect.top) / rect.height) * imageDimensions.height));
+    const containerRect = imageContainerRef.current.getBoundingClientRect();
+
+    // Account for object-fit: contain letterboxing
+    const imgRect = getContainedImageRect(
+      containerRect.width,
+      containerRect.height,
+      imageDimensions.width,
+      imageDimensions.height,
+    );
+
+    // Mouse position relative to the rendered image (not the container)
+    const relX = e.clientX - containerRect.left - imgRect.offsetX;
+    const relY = e.clientY - containerRect.top - imgRect.offsetY;
+
+    // Map to original image coordinates
+    const x = Math.max(0, Math.min(imageDimensions.width, (relX / imgRect.renderW) * imageDimensions.width));
+    const y = Math.max(0, Math.min(imageDimensions.height, (relY / imgRect.renderH) * imageDimensions.height));
 
     setCorners((prev) => ({
       ...prev,
@@ -357,9 +510,9 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
   const handlePointerUp = () => {
     if (draggingCorner) {
       setDraggingCorner(null);
-      // Re-run recognition using updated corners
+      // Use current ref value (not stale closure)
       if (rawImagePixelsRef.current) {
-        recognizePieces(rawImagePixelsRef.current, corners);
+        triggerWarp(rawImagePixelsRef.current, cornersRef.current);
       }
     }
   };
@@ -369,31 +522,32 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
     if (!rawImagePixelsRef.current) return;
     const w = imageDimensions.width;
     const h = imageDimensions.height;
-    const srcData = rawImagePixelsRef.current.data;
 
-    // Create a rotated canvas
     const canvas = document.createElement('canvas');
     canvas.width = h;
     canvas.height = w;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    
+
     const img = new Image();
     img.onload = () => {
+      if (!mountedRef.current) return;
       ctx.translate(h / 2, w / 2);
       ctx.rotate((90 * Math.PI) / 180);
-      ctx.drawImage(img, -w / 2, -h / 2);
+      ctx.drawImage(img, -w / 2, -h / 2, w, h);
 
       const rotated = ctx.getImageData(0, 0, h, w);
       rawImagePixelsRef.current = rotated;
       setImageSrc(canvas.toDataURL());
       setImageDimensions({ width: h, height: w });
-      
-      // Auto-detect on new rotated pixels
+
+      // Detect board on rotated image
+      const id = ++requestIdRef.current;
       setIsProcessing(true);
       workerRef.current?.postMessage({
         action: 'detect',
-        imageData: rotated
+        requestId: id,
+        imageData: rotated,
       });
     };
     img.src = imageSrc;
@@ -411,7 +565,7 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
       croppedImage: croppedBase64,
       detectedFen: exportPgnFen(originalGrid),
       correctedFen: manualFen,
-      confidence: detectionConfidence,
+      confidence: 0, // No fake confidence
       notes: notes.trim()
     };
     const success = await saveScan(scanItem);
@@ -425,7 +579,7 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
   };
 
   const exportPgnFen = (targetGrid: string[]) => {
-    let rows: string[] = [];
+    const rows: string[] = [];
     for (let r = 0; r < 8; r++) {
       let empty = 0;
       let row = '';
@@ -455,49 +609,47 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
   const handleLoadHistoryItem = (item: ScannedPosition) => {
     setImageSrc(item.originalImage || '');
     handleLoadFenString(item.correctedFen);
-    setDetectionConfidence(item.confidence);
     setNotes(item.notes);
     showToast('Loaded scanned position from history');
   };
 
-  // Verify FEN legality
-  const validateFenLegality = (fen: string) => {
+  // Position validation using the new library
+  const positionValidation = validatePosition(grid);
+
+  // FEN syntax validation (can chess.js parse it?)
+  const fenSyntaxValid = (() => {
     try {
-      const chess = new Chess(fen);
-      const errors = [];
-
-      // Custom rules checks
-      const board = chess.board().flat();
-      const wKings = board.filter((p) => p?.type === 'k' && p.color === 'w');
-      const bKings = board.filter((p) => p?.type === 'k' && p.color === 'b');
-      const wPawns = board.filter((p) => p?.type === 'p' && p.color === 'w');
-      const bPawns = board.filter((p) => p?.type === 'p' && p.color === 'b');
-
-      if (wKings.length !== 1) errors.push('Must contain exactly one white king.');
-      if (bKings.length !== 1) errors.push('Must contain exactly one black king.');
-      if (wPawns.length > 8) errors.push('Cannot exceed 8 white pawns.');
-      if (bPawns.length > 8) errors.push('Cannot exceed 8 black pawns.');
-
-      if (chess.inCheck() && chess.turn() === 'b') {
-        const next = new Chess(fen);
-        // Try playing a random move to see if both are in check
-        // (Simplified check validation)
-      }
-
-      return {
-        valid: errors.length === 0,
-        errors
-      };
-    } catch (e) {
-      return { valid: false, errors: ['Syntax invalid. Check FEN structure.'] };
+      new Chess(manualFen);
+      return true;
+    } catch {
+      return false;
     }
-  };
+  })();
 
-  const validation = validateFenLegality(manualFen);
+  const canOpenInAnalysis = fenSyntaxValid && hasValidKings(grid);
+
+  // Compute image-to-view coordinate mapping for SVG overlay
+  const getViewCoords = useCallback(
+    (pt: CornerPoint): CornerPoint | null => {
+      if (!imageContainerRef.current || imageDimensions.width === 0) return null;
+      const containerRect = imageContainerRef.current.getBoundingClientRect();
+      const imgRect = getContainedImageRect(
+        containerRect.width,
+        containerRect.height,
+        imageDimensions.width,
+        imageDimensions.height,
+      );
+      return {
+        x: imgRect.offsetX + (pt.x / imageDimensions.width) * imgRect.renderW,
+        y: imgRect.offsetY + (pt.y / imageDimensions.height) * imgRect.renderH,
+      };
+    },
+    [imageDimensions],
+  );
 
   return (
     <div className="workspace" style={{ gridTemplateColumns: 'minmax(0, 1.25fr) minmax(360px, 0.75fr)', gap: '22px' }}>
-      
+
       {/* Left Column: Image Area & Corner Alignment */}
       <section className="board-column" aria-label="OCR Scanner Input">
         <div className="panel" style={{ minHeight: '420px', display: 'flex', flexDirection: 'column' }}>
@@ -522,7 +674,7 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
 
           {!imageSrc ? (
             // Upload Dropzone
-            <div 
+            <div
               className="dropzone"
               style={{
                 flex: 1,
@@ -551,7 +703,7 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
                 or click to upload, or paste directly with Ctrl+V
               </p>
               <button className="secondary-button" type="button">Select Image</button>
-              <input 
+              <input
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
@@ -565,7 +717,7 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
           ) : (
             // Preview & Corners Editor
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div 
+              <div
                 ref={imageContainerRef}
                 style={{
                   position: 'relative',
@@ -583,8 +735,8 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
                 onPointerUp={handlePointerUp}
                 onPointerLeave={handlePointerUp}
               >
-                <img 
-                  src={imageSrc} 
+                <img
+                  src={imageSrc}
                   alt="Scanned Chessboard"
                   style={{
                     maxWidth: '100%',
@@ -597,7 +749,7 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
 
                 {/* Corner markers overlay */}
                 {imageDimensions.width > 0 && imageContainerRef.current && (
-                  <svg 
+                  <svg
                     style={{
                       position: 'absolute',
                       inset: 0,
@@ -607,32 +759,64 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
                     }}
                   >
                     {(() => {
-                      const rect = imageContainerRef.current.getBoundingClientRect();
-                      const toViewCoords = (pt: CornerPoint) => ({
-                        x: (pt.x / imageDimensions.width) * rect.width,
-                        y: (pt.y / imageDimensions.height) * rect.height
-                      });
+                      const cTL = getViewCoords(corners.topLeft);
+                      const cTR = getViewCoords(corners.topRight);
+                      const cBL = getViewCoords(corners.bottomLeft);
+                      const cBR = getViewCoords(corners.bottomRight);
 
-                      const cTL = toViewCoords(corners.topLeft);
-                      const cTR = toViewCoords(corners.topRight);
-                      const cBL = toViewCoords(corners.bottomLeft);
-                      const cBR = toViewCoords(corners.bottomRight);
+                      if (!cTL || !cTR || !cBL || !cBR) return null;
 
                       return (
                         <>
                           {/* Board outline quadrilateral */}
-                          <polygon 
+                          <polygon
                             points={`${cTL.x},${cTL.y} ${cTR.x},${cTR.y} ${cBR.x},${cBR.y} ${cBL.x},${cBL.y}`}
                             fill="rgba(142, 208, 79, 0.15)"
                             stroke="var(--accent)"
                             strokeWidth="2"
                           />
 
+                          {/* 8×8 grid lines */}
+                          {[1, 2, 3, 4, 5, 6, 7].map((i) => {
+                            const t = i / 8;
+                            // Horizontal lines
+                            const hLeft = {
+                              x: cTL.x + (cBL.x - cTL.x) * t,
+                              y: cTL.y + (cBL.y - cTL.y) * t,
+                            };
+                            const hRight = {
+                              x: cTR.x + (cBR.x - cTR.x) * t,
+                              y: cTR.y + (cBR.y - cTR.y) * t,
+                            };
+                            // Vertical lines
+                            const vTop = {
+                              x: cTL.x + (cTR.x - cTL.x) * t,
+                              y: cTL.y + (cTR.y - cTL.y) * t,
+                            };
+                            const vBottom = {
+                              x: cBL.x + (cBR.x - cBL.x) * t,
+                              y: cBL.y + (cBR.y - cBL.y) * t,
+                            };
+                            return (
+                              <g key={i}>
+                                <line
+                                  x1={hLeft.x} y1={hLeft.y} x2={hRight.x} y2={hRight.y}
+                                  stroke="var(--accent)" strokeWidth="0.5" strokeOpacity="0.4"
+                                />
+                                <line
+                                  x1={vTop.x} y1={vTop.y} x2={vBottom.x} y2={vBottom.y}
+                                  stroke="var(--accent)" strokeWidth="0.5" strokeOpacity="0.4"
+                                />
+                              </g>
+                            );
+                          })}
+
                           {/* 4 Interactive Handles */}
                           {(['topLeft', 'topRight', 'bottomLeft', 'bottomRight'] as Array<keyof Corners>).map((corner) => {
-                            const pt = toViewCoords(corners[corner]);
+                            const pt = getViewCoords(corners[corner]);
+                            if (!pt) return null;
                             return (
-                              <circle 
+                              <circle
                                 key={corner}
                                 cx={pt.x}
                                 cy={pt.y}
@@ -651,9 +835,9 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
                   </svg>
                 )}
 
-                {/* OCR Web Worker Processing Loader */}
+                {/* Processing Loader */}
                 {isProcessing && (
-                  <div 
+                  <div
                     style={{
                       position: 'absolute',
                       inset: 0,
@@ -675,7 +859,7 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button className="secondary-button" onClick={handleRotateImage}>Rotate 90°</button>
-                  <button 
+                  <button
                     className="secondary-button"
                     onClick={() => {
                       const padX = Math.floor(imageDimensions.width * 0.1);
@@ -690,26 +874,57 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
                         bottomRight: { x: startX + size, y: startY + size }
                       };
                       setCorners(newCorners);
-                      if (rawImagePixelsRef.current) recognizePieces(rawImagePixelsRef.current, newCorners);
+                      if (rawImagePixelsRef.current) triggerWarp(rawImagePixelsRef.current, newCorners);
                     }}
                   >
                     Reset Crop
                   </button>
-                  <button 
+                  <button
                     className="danger-button"
                     onClick={() => {
+                      requestIdRef.current++; // cancel in-flight
                       setImageSrc('');
                       setGrid(Array(64).fill('empty'));
                       setOriginalGrid(Array(64).fill('empty'));
-                      setConfidences(Array(64).fill(100));
                     }}
                   >
                     Remove Image
                   </button>
+                  <button
+                    className="secondary-button"
+                    style={{ border: modelLoaded ? '1px solid #e6a817' : '1px solid var(--border)' }}
+                    disabled={modelLoaded === false}
+                    onClick={() => {
+                      if (rawImagePixelsRef.current) {
+                        triggerRecognize(rawImagePixelsRef.current, corners);
+                      }
+                    }}
+                    title={modelLoaded === false ? 'Model file not found in public/models/chess-pieces.onnx' : 'Run local piece recognition'}
+                  >
+                    Auto-Recognize {modelLoaded === false ? '(Model missing)' : '(Experimental)'}
+                  </button>
                 </div>
 
-                <div style={{ display: 'flex', gap: '14px', fontSize: '12px' }}>
-                  <span>Confidence: <strong>{detectionConfidence}%</strong></span>
+                <div style={{ display: 'flex', gap: '14px', fontSize: '12px', alignItems: 'center' }}>
+                  {modelLoaded === false && (
+                    <span style={{ color: 'var(--muted)', fontSize: '11px' }}>
+                      ⚠️ Model missing (Manual default)
+                    </span>
+                  )}
+                  {modelLoaded === true && (
+                    <span className="experimental-badge">
+                      🤖 ONNX Active
+                    </span>
+                  )}
+                  <span
+                    className={`pill ${boardDetectionQuality === 'good' ? '' : boardDetectionQuality === 'fair' ? 'experimental-badge' : ''}`}
+                    style={{
+                      borderColor: boardDetectionQuality === 'good' ? 'var(--accent)' : boardDetectionQuality === 'fair' ? '#e6a817' : 'var(--danger)',
+                      color: boardDetectionQuality === 'good' ? 'var(--accent)' : boardDetectionQuality === 'fair' ? '#e6a817' : 'var(--danger)',
+                    }}
+                  >
+                    {boardDetectionQuality === 'good' ? '✓ Board detected' : boardDetectionQuality === 'fair' ? '~ Board estimated' : '✎ Manual crop'}
+                  </span>
                 </div>
               </div>
             </div>
@@ -723,8 +938,8 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
         <div className="panel" style={{ padding: '12px' }}>
           <p className="eyebrow" style={{ marginBottom: '6px' }}>Warp Preview</p>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <canvas 
-              ref={croppedCanvasRef} 
+            <canvas
+              ref={croppedCanvasRef}
               style={{
                 width: '76px',
                 height: '76px',
@@ -734,17 +949,43 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
               }}
             />
             <div style={{ fontSize: '11px', color: 'var(--muted)' }}>
-              Adjust the 4 corners of the bounding box on the left image to correct perspective distortion.
+              Adjust the 4 corners on the left image to align with the board edges. Use the grid editor below to place pieces manually.
             </div>
+          </div>
+        </div>
+
+        {/* Board Orientation Selector */}
+        <div className="panel" style={{ padding: '12px' }}>
+          <p className="eyebrow" style={{ marginBottom: '8px' }}>Board Orientation</p>
+          <div className="orientation-selector" style={{ display: 'flex', gap: '12px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px' }}>
+              <input
+                type="radio"
+                name="boardOrientation"
+                checked={boardOrientation === 'white'}
+                onChange={() => setBoardOrientation('white')}
+              />
+              <span>White at bottom</span>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px' }}>
+              <input
+                type="radio"
+                name="boardOrientation"
+                checked={boardOrientation === 'black'}
+                onChange={() => setBoardOrientation('black')}
+              />
+              <span>Black at bottom</span>
+            </label>
           </div>
         </div>
 
         {/* Board Editor Grid */}
         <div className="panel" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <h2>Recognized Grid</h2>
+          <h2>Board Editor</h2>
 
           <div style={{ width: '100%', aspectRatio: '1/1', background: '#0a0e12', padding: '4px', borderRadius: '8px' }}>
-            <div 
+            <div
+              data-testid="board-editor-grid"
               style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(8, 1fr)',
@@ -758,60 +999,69 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
               {Array(64).fill(0).map((_, i) => {
                 const row = Math.floor(i / 8);
                 const col = i % 8;
-                
-                // Read grid depending on board orientation
+
                 const gridIdx = boardOrientation === 'white' ? i : ((7 - row) * 8 + (7 - col));
                 const piece = grid[gridIdx];
                 const confidence = confidences[gridIdx];
 
                 const isLightSquare = (row + col) % 2 === 0;
                 const squareBg = isLightSquare ? 'var(--board-light)' : 'var(--board-dark)';
-                
-                // Highlight if confidence < 75%
-                const lowConfidence = piece !== 'empty' && confidence < 75;
+
+                const isDragSource = dragSourceIdx === gridIdx;
+                const isDragTarget = dragOverIdx === gridIdx;
+
+                const isUncertain = modelLoaded && piece !== 'empty' && confidence < 75;
 
                 return (
                   <button
                     key={i}
                     type="button"
+                    draggable={piece !== 'empty'}
+                    className={`${isDragSource ? 'drag-source' : ''} ${isDragTarget ? 'drag-target' : ''} ${isUncertain ? 'square-uncertain' : ''}`}
                     style={{
-                      background: squareBg,
-                      border: lowConfidence ? '3px solid var(--danger)' : 'none',
+                      background: isDragTarget ? 'rgba(142, 208, 79, 0.35)' : squareBg,
+                      border: isUncertain ? '3px solid #e6a817' : 'none',
                       padding: 0,
                       position: 'relative',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      cursor: 'pointer',
-                      boxShadow: lowConfidence ? 'inset 0 0 12px rgba(255,116,116,0.6)' : 'none'
+                      cursor: piece !== 'empty' ? 'grab' : 'pointer',
+                      opacity: isDragSource ? 0.4 : 1,
+                      boxShadow: isUncertain ? 'inset 0 0 12px rgba(230, 168, 23, 0.6)' : 'none'
                     }}
                     onClick={() => handleSquareClick(gridIdx)}
+                    onDragStart={handleSquareDragStart(gridIdx)}
+                    onDragOver={handleSquareDragOver(gridIdx)}
+                    onDragLeave={handleSquareDragLeave}
+                    onDrop={handleSquareDrop(gridIdx)}
+                    onDragEnd={handleSquareDragEnd}
                   >
                     {piece !== 'empty' && (
-                      <span 
+                      <span
                         className={`piece piece-${piece[0]}`}
                         style={{
                           fontSize: '24px',
-                          textShadow: piece[0] === 'w' ? '0 0 1px #111' : 'none'
+                          textShadow: piece[0] === 'w' ? '0 0 1px #111' : 'none',
+                          pointerEvents: 'none',
                         }}
                       >
                         {pieceGlyph(piece[0] as 'w' | 'b', piece[1])}
                       </span>
                     )}
-                    
-                    {/* Confidence percentage indicator */}
-                    {piece !== 'empty' && (
-                      <span 
+                    {modelLoaded && piece !== 'empty' && (
+                      <span
                         style={{
                           position: 'absolute',
                           bottom: '1px',
                           right: '2px',
                           fontSize: '8px',
-                          opacity: 0.65,
-                          color: confidence < 75 ? 'var(--danger)' : 'var(--text)'
+                          opacity: 0.75,
+                          color: confidence < 75 ? '#e6a817' : 'var(--text)',
+                          fontWeight: 'bold'
                         }}
                       >
-                        {confidence}
+                        {confidence}%
                       </span>
                     )}
                   </button>
@@ -865,12 +1115,6 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
             <button className="secondary-button" style={{ flex: 1 }} onClick={handleUndo} disabled={historyIndex <= 0}>Undo</button>
             <button className="secondary-button" style={{ flex: 1 }} onClick={handleRedo} disabled={historyIndex >= history.length - 1}>Redo</button>
-            <button 
-              className="secondary-button" 
-              onClick={() => setBoardOrientation(boardOrientation === 'white' ? 'black' : 'white')}
-            >
-              Flip Board
-            </button>
             <button className="danger-button" onClick={handleClearBoard}>Clear</button>
             <button className="secondary-button" onClick={handleRestoreOriginal}>Restore</button>
           </div>
@@ -879,7 +1123,7 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
         {/* FEN Parameters & Controls */}
         <div className="panel" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <h2>FEN Configuration</h2>
-          
+
           <div className="settings-grid" style={{ gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
             <label>Side to move
               <select value={turn} onChange={(e) => setTurn(e.target.value as 'w' | 'b')}>
@@ -889,12 +1133,12 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
             </label>
 
             <label>En-passant target
-              <input 
-                type="text" 
-                maxLength={2} 
-                style={{ height: '38px', padding: '6px', background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '8px' }} 
-                value={enPassant} 
-                onChange={(e) => setEnPassant(e.target.value)} 
+              <input
+                type="text"
+                maxLength={2}
+                style={{ height: '38px', padding: '6px', background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '8px' }}
+                value={enPassant}
+                onChange={(e) => setEnPassant(e.target.value)}
               />
             </label>
           </div>
@@ -928,8 +1172,8 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <label style={{ fontSize: '12px', color: 'var(--muted)' }}>Generated FEN</label>
             <div style={{ display: 'flex', gap: '6px' }}>
-              <input 
-                type="text" 
+              <input
+                type="text"
                 value={manualFen}
                 onChange={(e) => {
                   setManualFen(e.target.value);
@@ -975,7 +1219,7 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
                   color: 'var(--text)'
                 }}
               />
-              <button 
+              <button
                 className="secondary-button"
                 onClick={() => {
                   navigator.clipboard.writeText(manualFen);
@@ -984,7 +1228,7 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
               >
                 Copy
               </button>
-              <button 
+              <button
                 className="secondary-button"
                 onClick={() => {
                   navigator.clipboard.readText().then((val) => {
@@ -997,46 +1241,60 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
             </div>
           </div>
 
-          {/* FEN validation warnings */}
-          {!validation.valid && (
-            <div 
+          {/* Position validation */}
+          {(!positionValidation.valid || positionValidation.warnings.length > 0) && (
+            <div
               style={{
                 padding: '10px',
-                background: 'rgba(255, 116, 116, 0.1)',
-                border: '1px solid var(--danger)',
+                background: positionValidation.valid ? 'rgba(230, 168, 23, 0.1)' : 'rgba(255, 116, 116, 0.1)',
+                border: `1px solid ${positionValidation.valid ? '#e6a817' : 'var(--danger)'}`,
                 borderRadius: '8px',
                 fontSize: '11px'
               }}
             >
-              <strong style={{ color: 'var(--danger)' }}>Position Warning: </strong>
-              <ul style={{ margin: '4px 0 0', paddingLeft: '16px' }}>
-                {validation.errors.map((err, idx) => <li key={idx}>{err}</li>)}
-              </ul>
+              {positionValidation.errors.length > 0 && (
+                <>
+                  <strong style={{ color: 'var(--danger)' }}>Position Errors: </strong>
+                  <ul style={{ margin: '4px 0 0', paddingLeft: '16px' }}>
+                    {positionValidation.errors.map((err, idx) => <li key={`e${idx}`}>{err}</li>)}
+                  </ul>
+                </>
+              )}
+              {positionValidation.warnings.length > 0 && (
+                <>
+                  <strong style={{ color: '#e6a817', marginTop: positionValidation.errors.length > 0 ? '8px' : '0', display: 'block' }}>
+                    Warnings:
+                  </strong>
+                  <ul style={{ margin: '4px 0 0', paddingLeft: '16px' }}>
+                    {positionValidation.warnings.map((w, idx) => <li key={`w${idx}`}>{w}</li>)}
+                  </ul>
+                </>
+              )}
             </div>
           )}
 
           {/* Action Triggers */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
-            <button 
-              className="primary-button" 
-              disabled={!validation.valid}
+            <button
+              className="primary-button"
+              disabled={!canOpenInAnalysis}
               onClick={() => onOpenAnalysis(manualFen)}
             >
               Open in Analysis
             </button>
             <div style={{ display: 'flex', gap: '8px' }}>
-              <button 
-                className="secondary-button" 
+              <button
+                className="secondary-button"
                 style={{ flex: 1 }}
-                disabled={!validation.valid}
+                disabled={!canOpenInAnalysis}
                 onClick={() => onOpenPlay(manualFen, 'b')}
               >
                 Play vs Stockfish
               </button>
-              <button 
-                className="secondary-button" 
+              <button
+                className="secondary-button"
                 style={{ flex: 1 }}
-                disabled={!validation.valid}
+                disabled={!canOpenInAnalysis}
                 onClick={() => onSaveToArchive('Scanned Position', manualFen)}
               >
                 Save to Archive
@@ -1050,8 +1308,8 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h2>History</h2>
             {historyList.length > 0 && (
-              <button 
-                className="text-button" 
+              <button
+                className="text-button"
                 onClick={async () => {
                   if (confirm('Clear all scans from history?')) {
                     await clearScanHistory();
@@ -1065,7 +1323,7 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
             )}
           </div>
 
-          <div 
+          <div
             style={{
               overflowY: 'auto',
               flex: 1,
@@ -1081,7 +1339,7 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
               </p>
             ) : (
               historyList.map((item) => (
-                <div 
+                <div
                   key={item.id}
                   className="pv-line"
                   style={{
@@ -1094,9 +1352,9 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
                   }}
                   onClick={() => handleLoadHistoryItem(item)}
                 >
-                  <img 
-                    src={item.croppedImage || ''} 
-                    alt="cropped" 
+                  <img
+                    src={item.croppedImage || ''}
+                    alt="cropped"
                     style={{
                       width: '44px',
                       height: '44px',
@@ -1113,7 +1371,7 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
                       {item.correctedFen}
                     </span>
                   </div>
-                  <button 
+                  <button
                     className="text-button"
                     style={{ color: 'var(--danger)', padding: '4px 6px' }}
                     onClick={(e) => handleDeleteHistoryItem(item.id, e)}
@@ -1128,8 +1386,8 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
           {/* History Save Form */}
           {imageSrc && (
             <div style={{ display: 'flex', gap: '6px', borderTop: '1px solid var(--border)', paddingTop: '10px' }}>
-              <input 
-                type="text" 
+              <input
+                type="text"
                 placeholder="Scan name or notes..."
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
@@ -1144,7 +1402,7 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
                   fontSize: '12px'
                 }}
               />
-              <button 
+              <button
                 className="secondary-button"
                 style={{ height: '34px', padding: '0 12px', fontSize: '12px' }}
                 onClick={handleSaveScan}

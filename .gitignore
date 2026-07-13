@@ -6,5 +6,6 @@ playwright-report
 test-results
 public/engine/*.js
 public/engine/*.wasm
+public/onnx/
 *.log
 .DS_Store

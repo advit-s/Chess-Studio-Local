@@ -1368,3 +1368,52 @@ input[type="range"] {
     transition-duration: .01ms !important;
   }
 }
+
+/* ─── Scan Panel Additions ──────────────────────────────────── */
+
+.experimental-badge {
+  background: rgba(230, 168, 23, 0.12);
+  border: 1px solid #e6a817;
+  color: #e6a817;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 99px;
+  letter-spacing: 0.02em;
+}
+
+.orientation-selector label {
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.orientation-selector input[type="radio"] {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+}
+
+.square-uncertain {
+  box-shadow: inset 0 0 0 3px #e6a817, inset 0 0 12px rgba(230, 168, 23, 0.45);
+  animation: uncertain-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes uncertain-pulse {
+  0%, 100% { box-shadow: inset 0 0 0 3px #e6a817, inset 0 0 12px rgba(230, 168, 23, 0.45); }
+  50%      { box-shadow: inset 0 0 0 3px #e6a817, inset 0 0 20px rgba(230, 168, 23, 0.7); }
+}
+
+.drag-source {
+  opacity: 0.35;
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+}
+
+.drag-target {
+  background: rgba(142, 208, 79, 0.3) !important;
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}

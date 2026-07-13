@@ -21,4 +21,9 @@ export default defineConfig({
     target: 'es2022',
     emptyOutDir: true,
   },
+  assetsInclude: ['**/*.onnx'],
+  optimizeDeps: {
+    exclude: ['onnxruntime-web'],
+  },
 });
+
