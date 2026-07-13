@@ -4,6 +4,8 @@
  * Validates chess positions from the scan grid format (string[] of 64 entries).
  * Separates hard errors (illegal) from soft warnings (unusual but legal).
  */
+import { Chess } from 'chess.js';
+
 
 export interface PositionValidationResult {
   valid: boolean;       // true if no errors (warnings are ok)
@@ -65,6 +67,50 @@ export function validatePosition(grid: string[]): PositionValidationResult {
 
   if (bk === 0) errors.push('Missing black king.');
   else if (bk > 1) errors.push(`Too many black kings (${bk}).`);
+
+  // Adjacent kings check
+  if (wk === 1 && bk === 1) {
+    const wkIdx = grid.indexOf('wk');
+    const bkIdx = grid.indexOf('bk');
+    if (wkIdx !== -1 && bkIdx !== -1) {
+      const wkRow = Math.floor(wkIdx / 8);
+      const wkCol = wkIdx % 8;
+      const bkRow = Math.floor(bkIdx / 8);
+      const bkCol = bkIdx % 8;
+      if (Math.abs(wkRow - bkRow) <= 1 && Math.abs(wkCol - bkCol) <= 1) {
+        errors.push('Kings cannot be placed on adjacent squares.');
+      }
+    }
+  }
+
+  // Validate FEN syntax of the piece layout
+  try {
+    const fenRows: string[] = [];
+    for (let r = 0; r < 8; r++) {
+      let emptyCount = 0;
+      let rowStr = '';
+      for (let c = 0; c < 8; c++) {
+        const piece = grid[r * 8 + c];
+        if (piece === 'empty') {
+          emptyCount++;
+        } else {
+          if (emptyCount > 0) {
+            rowStr += emptyCount;
+            emptyCount = 0;
+          }
+          rowStr += piece[0] === 'w' ? piece[1].toUpperCase() : piece[1].toLowerCase();
+        }
+      }
+      if (emptyCount > 0) {
+        rowStr += emptyCount;
+      }
+      fenRows.push(rowStr);
+    }
+    const mockFen = `${fenRows.join('/')} w - - 0 1`;
+    new Chess(mockFen);
+  } catch (err: any) {
+    errors.push(`Generated FEN syntax is invalid: ${err.message || 'unknown error'}`);
+  }
 
   // --- Pawn checks ---
   const wp = counts['wp'] || 0;

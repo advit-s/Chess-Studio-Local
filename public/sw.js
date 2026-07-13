@@ -6,7 +6,15 @@ const APP_SHELL = [
   scopedUrl('index.html'),
   scopedUrl('manifest.webmanifest'),
   scopedUrl('icons/icon.svg'),
-  scopedUrl('ocrWorker.js'),
+  scopedUrl('scanWorker.js'),
+  scopedUrl('tf.min.js'),
+  scopedUrl('models/chess-ocr/tensorflowjs_model.pb'),
+  scopedUrl('models/chess-ocr/weights_manifest.json'),
+  scopedUrl('models/chess-ocr/group1-shard1of5'),
+  scopedUrl('models/chess-ocr/group1-shard2of5'),
+  scopedUrl('models/chess-ocr/group1-shard3of5'),
+  scopedUrl('models/chess-ocr/group1-shard4of5'),
+  scopedUrl('models/chess-ocr/group1-shard5of5'),
 ];
 
 self.addEventListener('install', (event) => {

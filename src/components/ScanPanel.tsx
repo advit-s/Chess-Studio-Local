@@ -78,9 +78,12 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
   const [grid, setGrid] = useState<string[]>(Array(64).fill('empty'));
   const [originalGrid, setOriginalGrid] = useState<string[]>(Array(64).fill('empty'));
   const [confidences, setConfidences] = useState<number[]>(Array(64).fill(100));
+  const [margins, setMargins] = useState<number[]>(Array(64).fill(100));
   const [modelLoaded, setModelLoaded] = useState<boolean | null>(null);
   const [modelError, setModelError] = useState<string | null>(null);
   const [boardOrientation, setBoardOrientation] = useState<'white' | 'black'>('white');
+  const [showOrientationConfirm, setShowOrientationConfirm] = useState<boolean>(false);
+
   const [selectedPalettePiece, setSelectedPalettePiece] = useState<string>('empty');
 
   // Drag & drop between squares
@@ -181,18 +184,22 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
             setGrid(result.grid);
             setOriginalGrid(result.grid);
             setConfidences(result.confidences);
+            setMargins(result.margins || Array(64).fill(100));
             setHistory([result.grid]);
             setHistoryIndex(0);
+            setShowOrientationConfirm(true);
 
             const validation = validatePosition(result.grid);
             if (validation.valid) {
-              showToast('Piece recognition complete (experimental)');
+              showToast('Piece recognition complete');
             } else {
               showToast('Auto-recognition complete with warnings/errors.');
             }
           } else {
             // Model not found or failed, keep empty/manual layout
             setConfidences(Array(64).fill(100));
+            setMargins(Array(64).fill(100));
+            setShowOrientationConfirm(false);
           }
 
           renderCroppedCanvas(result.warpedPixels, result.warpedSize);
@@ -510,6 +517,12 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
   const handlePointerUp = () => {
     if (draggingCorner) {
       setDraggingCorner(null);
+      // Increment request ID to cancel any in-flight recognition
+      requestIdRef.current++;
+      setConfidences(Array(64).fill(100));
+      setMargins(Array(64).fill(100));
+      setModelLoaded(null);
+      setShowOrientationConfirm(false);
       // Use current ref value (not stale closure)
       if (rawImagePixelsRef.current) {
         triggerWarp(rawImagePixelsRef.current, cornersRef.current);
@@ -873,6 +886,11 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
                         bottomLeft: { x: startX, y: startY + size },
                         bottomRight: { x: startX + size, y: startY + size }
                       };
+                      requestIdRef.current++;
+                      setConfidences(Array(64).fill(100));
+                      setMargins(Array(64).fill(100));
+                      setModelLoaded(null);
+                      setShowOrientationConfirm(false);
                       setCorners(newCorners);
                       if (rawImagePixelsRef.current) triggerWarp(rawImagePixelsRef.current, newCorners);
                     }}
@@ -899,21 +917,21 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
                         triggerRecognize(rawImagePixelsRef.current, corners);
                       }
                     }}
-                    title={modelLoaded === false ? 'Model file not found in public/models/chess-pieces.onnx' : 'Run local piece recognition'}
+                    title={modelLoaded === false ? 'Model file not found in public/models/chess-ocr/' : 'Run local piece recognition'}
                   >
-                    Auto-Recognize {modelLoaded === false ? '(Model missing)' : '(Experimental)'}
+                    Auto-Recognize {modelLoaded === false ? '(Failed to load)' : ''}
                   </button>
                 </div>
 
                 <div style={{ display: 'flex', gap: '14px', fontSize: '12px', alignItems: 'center' }}>
                   {modelLoaded === false && (
-                    <span style={{ color: 'var(--muted)', fontSize: '11px' }}>
-                      ⚠️ Model missing (Manual default)
+                    <span style={{ color: 'var(--danger)', fontSize: '11px' }}>
+                      ⚠️ Model failed to load ({modelError || 'Files missing'})
                     </span>
                   )}
                   {modelLoaded === true && (
                     <span className="experimental-badge">
-                      🤖 ONNX Active
+                      🤖 OCR Active
                     </span>
                   )}
                   <span
@@ -979,6 +997,51 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
           </div>
         </div>
 
+        {showOrientationConfirm && (
+          <div
+            className="panel"
+            style={{
+              background: 'rgba(142, 208, 79, 0.1)',
+              border: '1px solid var(--accent)',
+              padding: '12px',
+              borderRadius: '8px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px',
+              marginBottom: '10px'
+            }}
+          >
+            <div style={{ fontWeight: 'bold', fontSize: '13px' }}>
+              🔍 Confirm Board Orientation
+            </div>
+            <div style={{ fontSize: '12px', color: 'var(--muted)' }}>
+              The scanner detected pieces assuming <strong>{boardOrientation === 'white' ? 'White at bottom' : 'Black at bottom'}</strong>.
+            </div>
+            <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+              <button
+                type="button"
+                className="primary-button"
+                style={{ padding: '6px 12px', fontSize: '12px', height: 'auto' }}
+                onClick={() => setShowOrientationConfirm(false)}
+              >
+                Confirm ({boardOrientation === 'white' ? 'White' : 'Black'} at bottom)
+              </button>
+              <button
+                type="button"
+                className="secondary-button"
+                style={{ padding: '6px 12px', fontSize: '12px', height: 'auto' }}
+                onClick={() => {
+                  setBoardOrientation(prev => prev === 'white' ? 'black' : 'white');
+                  setShowOrientationConfirm(false);
+                  showToast('Board orientation flipped');
+                }}
+              >
+                Flip Board ({boardOrientation === 'white' ? 'Black' : 'White'} at bottom)
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Board Editor Grid */}
         <div className="panel" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <h2>Board Editor</h2>
@@ -1003,6 +1066,7 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
                 const gridIdx = boardOrientation === 'white' ? i : ((7 - row) * 8 + (7 - col));
                 const piece = grid[gridIdx];
                 const confidence = confidences[gridIdx];
+                const margin = margins[gridIdx];
 
                 const isLightSquare = (row + col) % 2 === 0;
                 const squareBg = isLightSquare ? 'var(--board-light)' : 'var(--board-dark)';
@@ -1010,7 +1074,7 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
                 const isDragSource = dragSourceIdx === gridIdx;
                 const isDragTarget = dragOverIdx === gridIdx;
 
-                const isUncertain = modelLoaded && piece !== 'empty' && confidence < 75;
+                const isUncertain = modelLoaded && piece !== 'empty' && (confidence < 75 || margin < 20);
 
                 return (
                   <button
@@ -1020,7 +1084,7 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
                     className={`${isDragSource ? 'drag-source' : ''} ${isDragTarget ? 'drag-target' : ''} ${isUncertain ? 'square-uncertain' : ''}`}
                     style={{
                       background: isDragTarget ? 'rgba(142, 208, 79, 0.35)' : squareBg,
-                      border: isUncertain ? '3px solid #e6a817' : 'none',
+                      border: isUncertain ? '3px dashed #e6a817' : 'none',
                       padding: 0,
                       position: 'relative',
                       display: 'flex',
@@ -1028,7 +1092,7 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
                       justifyContent: 'center',
                       cursor: piece !== 'empty' ? 'grab' : 'pointer',
                       opacity: isDragSource ? 0.4 : 1,
-                      boxShadow: isUncertain ? 'inset 0 0 12px rgba(230, 168, 23, 0.6)' : 'none'
+                      boxShadow: isUncertain ? 'inset 0 0 12px rgba(230, 168, 23, 0.4)' : 'none'
                     }}
                     onClick={() => handleSquareClick(gridIdx)}
                     onDragStart={handleSquareDragStart(gridIdx)}
@@ -1057,7 +1121,7 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
                           right: '2px',
                           fontSize: '8px',
                           opacity: 0.75,
-                          color: confidence < 75 ? '#e6a817' : 'var(--text)',
+                          color: (confidence < 75 || margin < 20) ? '#e6a817' : 'var(--text)',
                           fontWeight: 'bold'
                         }}
                       >

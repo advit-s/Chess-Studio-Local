@@ -39,3 +39,51 @@ try {
   console.warn('Could not prepare ONNX Runtime Web WASM files:', err.message);
 }
 
+// 3. TensorFlow.js library file
+const tfSource = path.join(root, 'node_modules', '@tensorflow', 'tfjs', 'dist', 'tf.min.js');
+const tfTarget = path.join(root, 'public', 'tf.min.js');
+
+try {
+  await access(tfSource, constants.R_OK);
+  await copyFile(tfSource, tfTarget);
+  console.log('Prepared TensorFlow.js library file.');
+} catch (err) {
+  console.warn('Could not copy TensorFlow.js library:', err.message);
+}
+
+// 4. Download Chess OCR model files
+import { writeFileSync } from 'node:fs';
+const ocrTargetDir = path.join(root, 'public', 'models', 'chess-ocr');
+await mkdir(ocrTargetDir, { recursive: true });
+
+const modelFiles = [
+  'tensorflowjs_model.pb',
+  'weights_manifest.json',
+  'group1-shard1of5',
+  'group1-shard2of5',
+  'group1-shard3of5',
+  'group1-shard4of5',
+  'group1-shard5of5',
+];
+
+const baseUrl = 'https://raw.githubusercontent.com/Elucidation/ChessboardFenTensorflowJs/master/frozen_model/';
+
+console.log('Downloading Chess OCR model files...');
+for (const file of modelFiles) {
+  const url = `${baseUrl}${file}`;
+  const targetPath = path.join(ocrTargetDir, file);
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(`HTTP error! status: ${res.status}`);
+    }
+    const buffer = await res.arrayBuffer();
+    writeFileSync(targetPath, Buffer.from(buffer));
+    console.log(`Downloaded: ${file}`);
+  } catch (err) {
+    console.error(`Failed to download ${file}:`, err.message);
+    process.exit(1);
+  }
+}
+
+

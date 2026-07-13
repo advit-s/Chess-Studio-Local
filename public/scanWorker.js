@@ -1,8 +1,10 @@
+self.window = self;
+
 // Scan Worker — Board Detection & Piece Recognition
 //
 // Handles two actions:
 //   'detect'    — find the chessboard in the image
-//   'recognize' — classify pieces on the board (requires ONNX model)
+//   'recognize' — classify pieces on the board (requires TF.js model)
 //
 // Protocol: every message must include a requestId.
 // The worker echoes requestId in all responses so the main thread
@@ -337,112 +339,169 @@ function warpPerspective(pixels, srcWidth, srcHeight, corners, destSize) {
 }
 
 // ============================================================
-// ONNX Runtime Inference & Piece Recognition (Stage 2)
+// TensorFlow.js Inference & Piece Recognition (Stage 2)
 // ============================================================
 
-const PIECE_CLASSES = [
-  'empty',
-  'wp', 'wn', 'wb', 'wr', 'wq', 'wk',
-  'bp', 'bn', 'bb', 'br', 'bq', 'bk'
+const TF_CLASSES = [
+  'empty', // 0 ('1')
+  'wk',    // 1 ('K')
+  'wq',    // 2 ('Q')
+  'wr',    // 3 ('R')
+  'wb',    // 4 ('B')
+  'wn',    // 5 ('N')
+  'wp',    // 6 ('P')
+  'bk',    // 7 ('k')
+  'bq',    // 8 ('q')
+  'br',    // 9 ('r')
+  'bb',    // 10 ('b')
+  'bn',    // 11 ('n')
+  'bp'     // 12 ('p')
 ];
 
-let ortSession = null;
+let tfModel = null;
 let modelLoadError = null;
 
 async function loadModel(requestId) {
-  if (ortSession) return true;
+  if (tfModel) return true;
   if (modelLoadError) throw new Error(modelLoadError);
 
   try {
-    self.postMessage({ requestId, status: 'progress', step: 'Initializing browser-local inference' });
-    self.importScripts('onnx/ort.min.js');
+    self.postMessage({ requestId, status: 'progress', step: 'Loading OCR model' });
+    self.importScripts('tf.min.js');
     
-    if (!self.ort) {
-      throw new Error('ONNX Runtime Web library failed to load.');
+    if (!self.tf) {
+      throw new Error('TensorFlow.js library failed to load.');
     }
 
-    self.ort.env.wasm.wasmPaths = 'onnx/';
-    self.ort.env.wasm.numThreads = 1; // Avoid multithreading overhead in worker
-
-    self.postMessage({ requestId, status: 'progress', step: 'Loading chess pieces model' });
-    ortSession = await self.ort.InferenceSession.create('models/chess-pieces.onnx', {
-      executionProviders: ['wasm']
-    });
+    tfModel = await self.tf.loadFrozenModel(
+      'models/chess-ocr/tensorflowjs_model.pb',
+      'models/chess-ocr/weights_manifest.json'
+    );
     return true;
   } catch (err) {
-    modelLoadError = err.message || 'ONNX model loading failed';
+    modelLoadError = err.message || 'TensorFlow model loading failed';
     throw new Error(modelLoadError);
   }
-}
-
-function softmax(logits) {
-  const max = Math.max(...logits);
-  const exps = new Float32Array(logits.length);
-  let sum = 0;
-  for (let i = 0; i < logits.length; i++) {
-    exps[i] = Math.exp(logits[i] - max);
-    sum += exps[i];
-  }
-  for (let i = 0; i < logits.length; i++) {
-    exps[i] /= sum;
-  }
-  return exps;
 }
 
 async function recognizePieces(warpedPixels, destSize, requestId) {
   await loadModel(requestId);
 
-  const squareSize = destSize / 8; // 32
-  const grid = Array(64).fill('empty');
-  const confidences = Array(64).fill(100);
+  self.postMessage({
+    requestId,
+    status: 'progress',
+    step: 'Recognizing 64 squares'
+  });
 
-  for (let r = 0; r < 8; r++) {
-    for (let c = 0; c < 8; c++) {
-      const idx = r * 8 + c;
-      self.postMessage({
-        requestId,
-        status: 'progress',
-        step: `Recognizing pieces... square ${idx + 1}/64`
-      });
-
-      const floatData = new Float32Array(3 * 32 * 32);
-
-      // Extract and normalize pixels to [0, 1] as CHW layout
-      for (let y = 0; y < 32; y++) {
-        const srcY = Math.floor(r * squareSize + (y / 32) * squareSize);
-        for (let x = 0; x < 32; x++) {
-          const srcX = Math.floor(c * squareSize + (x / 32) * squareSize);
-          const srcIdx = (srcY * destSize + srcX) * 4;
-          const dstIdx = y * 32 + x;
-
-          floatData[0 * 1024 + dstIdx] = warpedPixels[srcIdx] / 255.0;
-          floatData[1 * 1024 + dstIdx] = warpedPixels[srcIdx + 1] / 255.0;
-          floatData[2 * 1024 + dstIdx] = warpedPixels[srcIdx + 2] / 255.0;
-        }
-      }
-
-      const tensor = new self.ort.Tensor('float32', floatData, [1, 3, 32, 32]);
-      const feeds = { [ortSession.inputNames[0]]: tensor };
-      const outputMap = await ortSession.run(feeds);
-      const outputName = ortSession.outputNames[0];
-      const logits = outputMap[outputName].data;
-
-      const probs = softmax(logits);
-      let bestIdx = 0;
-      let bestProb = 0;
-      for (let i = 0; i < probs.length; i++) {
-        if (probs[i] > bestProb) {
-          bestProb = probs[i];
-          bestIdx = i;
-        }
-      }
-
-      grid[idx] = PIECE_CLASSES[bestIdx];
-      confidences[idx] = Math.round(bestProb * 100);
-    }
+  // Convert 256x256 RGBA to grayscale
+  const grayPixels = new Float32Array(256 * 256);
+  for (let i = 0; i < 256 * 256; i++) {
+    const j = i * 4;
+    grayPixels[i] = Math.round(
+      warpedPixels[j] * 0.299 +
+      warpedPixels[j + 1] * 0.587 +
+      warpedPixels[j + 2] * 0.114
+    );
   }
 
-  return { grid, confidences };
+  // Create tf.Tensor3D [256, 256, 1]
+  const imgTensor = self.tf.tensor3d(grayPixels, [256, 256, 1], 'float32');
+
+  // Slice and reshape into 8 vertical strips, then concat to [64, 1024]
+  const files = [];
+  for (let i = 0; i < 8; i++) {
+    files[i] = imgTensor.slice([0, 32 * i, 0], [256, 32, 1]).reshape([8, 1024]);
+  }
+  const tiles = self.tf.concat(files);
+  const keepProb = self.tf.scalar(1.0);
+
+  const grid = Array(64).fill('empty');
+  const confidences = Array(64).fill(100);
+  const margins = Array(64).fill(0);
+  const top3Candidates = Array(64).fill(null);
+  const probabilities = Array(64).fill(null);
+
+  try {
+    // Attempt execution with 'probabilities' node (returns softmax shape [64, 13])
+    const outputTensor = tfModel.execute({ Input: tiles, KeepProb: keepProb }, 'probabilities');
+    const probsData = outputTensor.dataSync();
+
+    for (let tileIdx = 0; tileIdx < 64; tileIdx++) {
+      const start = tileIdx * 13;
+      const tileProbs = [];
+      for (let c = 0; c < 13; c++) {
+        tileProbs.push({
+          piece: TF_CLASSES[c],
+          prob: probsData[start + c]
+        });
+      }
+
+      tileProbs.sort((a, b) => b.prob - a.prob);
+
+      const top1 = tileProbs[0];
+      const top2 = tileProbs[1];
+      const top3 = tileProbs[2];
+
+      // Map column-first tileIdx back to row-first gridIdx:
+      // tileIdx = file * 8 + rank
+      const file = Math.floor(tileIdx / 8);
+      const rank = tileIdx % 8;
+      const gridIdx = rank * 8 + file;
+
+      grid[gridIdx] = top1.piece;
+      confidences[gridIdx] = Math.round(top1.prob * 100);
+      margins[gridIdx] = Math.round((top1.prob - top2.prob) * 100);
+      top3Candidates[gridIdx] = [
+        { piece: top1.piece, prob: top1.prob },
+        { piece: top2.piece, prob: top2.prob },
+        { piece: top3.piece, prob: top3.prob }
+      ];
+
+      const fullProbMap = {};
+      for (let c = 0; c < 13; c++) {
+        fullProbMap[TF_CLASSES[c]] = probsData[start + c];
+      }
+      probabilities[gridIdx] = fullProbMap;
+    }
+
+    outputTensor.dispose();
+  } catch (err) {
+    console.warn('Failed executing with probabilities node, falling back to default node:', err.message);
+    const outputTensor = tfModel.execute({ Input: tiles, KeepProb: keepProb });
+    const predictions = outputTensor.dataSync();
+
+    for (let tileIdx = 0; tileIdx < 64; tileIdx++) {
+      const predClassIdx = predictions[tileIdx];
+      const file = Math.floor(tileIdx / 8);
+      const rank = tileIdx % 8;
+      const gridIdx = rank * 8 + file;
+
+      const className = TF_CLASSES[predClassIdx] || 'empty';
+      grid[gridIdx] = className;
+      confidences[gridIdx] = 100;
+      margins[gridIdx] = 100;
+      top3Candidates[gridIdx] = [
+        { piece: className, prob: 1.0 },
+        { piece: 'empty', prob: 0.0 },
+        { piece: 'empty', prob: 0.0 }
+      ];
+
+      const fullProbMap = {};
+      for (let c = 0; c < 13; c++) {
+        fullProbMap[TF_CLASSES[c]] = c === predClassIdx ? 1.0 : 0.0;
+      }
+      probabilities[gridIdx] = fullProbMap;
+    }
+
+    outputTensor.dispose();
+  }
+
+  // Cleanup tensors
+  imgTensor.dispose();
+  tiles.dispose();
+  keepProb.dispose();
+
+  return { grid, confidences, margins, top3Candidates, probabilities };
 }
 
 // ============================================================
@@ -468,7 +527,6 @@ self.onmessage = async function (event) {
     }
 
     if (action === 'warp') {
-      // Warp the board region for preview — no piece classification
       self.postMessage({ requestId, status: 'progress', step: 'Correcting perspective' });
 
       const destSize = 256;
@@ -512,13 +570,16 @@ self.onmessage = async function (event) {
           result: {
             grid: recognition.grid,
             confidences: recognition.confidences,
+            margins: recognition.margins,
+            top3Candidates: recognition.top3Candidates,
+            probabilities: recognition.probabilities,
             warpedPixels,
             warpedSize: destSize,
             modelLoaded: true
           }
         });
       } catch (err) {
-        console.warn('ONNX recognition failed (falling back to manual layout):', err.message);
+        console.warn('TF.js recognition failed (falling back to manual layout):', err.message);
         self.postMessage({
           requestId,
           status: 'complete',
@@ -526,6 +587,9 @@ self.onmessage = async function (event) {
           result: {
             grid: Array(64).fill('empty'),
             confidences: Array(64).fill(100),
+            margins: Array(64).fill(100),
+            top3Candidates: Array(64).fill(null),
+            probabilities: Array(64).fill(null),
             warpedPixels,
             warpedSize: destSize,
             modelLoaded: false,
