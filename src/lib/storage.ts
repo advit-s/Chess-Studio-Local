@@ -58,10 +58,11 @@ export function upsertGame(game: SavedGame): { success: boolean; games: SavedGam
   return { success, games: next };
 }
 
-export function deleteSavedGame(id: string): SavedGame[] {
-  const next = loadGames().filter((item) => item.id !== id);
-  saveGames(next);
-  return next;
+export function deleteSavedGame(id: string): { success: boolean; games: SavedGame[] } {
+  const current = loadGames();
+  const next = current.filter((item) => item.id !== id);
+  const success = saveGames(next);
+  return { success, games: success ? next : current };
 }
 
 const finiteNumber = (value: unknown, fallback: number, minimum: number, maximum: number) => {

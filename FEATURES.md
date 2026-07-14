@@ -1,31 +1,32 @@
 # Feature status
 
-## Stable in 0.2.0
+## Verified in 0.3.0
 
-- Immutable legal game state synchronized with the rendered board
-- Click, native mouse drag, and touch-pointer drag input
-- Legal highlighting, captures, castling, en passant, and promotion picker
-- Check, checkmate, stalemate, repetition, insufficient-material, and fifty-move detection
-- Move list, undo, redo, cursor navigation, keyboard navigation, flip, and fullscreen
-- FEN validation/import/copy and custom-position preservation
-- PGN headers/comments/variations import and PGN export/download
-- Dedicated Stockfish 18 Lite single-thread Web Worker
-- UCI readiness, serialized cancellation, generation/FEN stale-result protection, legal best-move validation, restart UI, mate scores, and MultiPV
-- Play against Stockfish as either colour with one engine response per turn
-- Cancellable local move-by-move game review
-- Validated local settings and saved-game archive
-- Dark and light themes
-- Responsive square board and non-overflowing panels from large desktop through 390×844 mobile, including zoom-equivalent narrow layouts
-- Versioned production service worker, offline refresh, clean relative Vite build, and local Windows HTTP launcher
-- React error boundary and visible engine loading/error/recovery states
-- Vitest unit regression suite and Playwright production-browser suite
+- Immutable legal chess state with click, mouse drag, and touch-pointer input
+- Legal targets, illegal rejection, castling, en passant, promotion, check,
+  checkmate, stalemate, repetition, insufficient material, and fifty-move draw
+- Undo, redo, navigation, new/custom positions, flip, and fullscreen
+- PGN/FEN import/export with supported source annotations preserved
+- Dedicated local Stockfish 18 Lite worker with MultiPV, mate scores,
+  cancellation, restart, stale-output protection, play as either colour, and
+  full-game review
+- Validated settings and local game archive with truthful storage errors
+- Local screenshot scanner with validated decode, bounded resize, automatic
+  board detection, four-corner crop, true homography, separate OCR worker,
+  orientation confirmation, position warnings, editable FEN, and reliable
+  manual correction
+- Versioned scan history with restore and real OCR rerun
+- Separate application/engine/OCR service-worker caches and explicit offline
+  OCR-model download
+- Lazy-loaded scanner, responsive square boards, light/dark themes, visible
+  focus states, mobile stacking, and independent desktop panel scrolling
+- Unit, integrity, benchmark, Stockfish smoke, production Chromium, OCR, and
+  true offline browser tests
 
-## Possible future work
+## Deliberate limits
 
-- IndexedDB archive with search, tags, and larger collections
-- Editable PGN annotations and side variations
-- Material/captured-piece display and chess clocks
-- Opening database and personal opening statistics
-- Puzzle extraction and retry-mistakes training
-- Chess960 and engine-vs-engine matches
-- Optional online game import modules, kept separate from offline core functionality
+- OCR is a correction-assisted local tool, not universal or physical-board OCR
+- No automated castling/en-passant/move-counter inference from an image
+- No cloud sync, online imports, opening database, chess clocks, Chess960, or
+  engine-vs-engine mode
+- No full visual variation-tree editor for PGN annotations

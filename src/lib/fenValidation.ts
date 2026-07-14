@@ -4,9 +4,6 @@
  * Validates chess positions from the scan grid format (string[] of 64 entries).
  * Separates hard errors (illegal) from soft warnings (unusual but legal).
  */
-import { Chess } from 'chess.js';
-
-
 export interface PositionValidationResult {
   valid: boolean;       // true if no errors (warnings are ok)
   errors: string[];     // fatal problems — position is illegal
@@ -83,35 +80,6 @@ export function validatePosition(grid: string[]): PositionValidationResult {
     }
   }
 
-  // Validate FEN syntax of the piece layout
-  try {
-    const fenRows: string[] = [];
-    for (let r = 0; r < 8; r++) {
-      let emptyCount = 0;
-      let rowStr = '';
-      for (let c = 0; c < 8; c++) {
-        const piece = grid[r * 8 + c];
-        if (piece === 'empty') {
-          emptyCount++;
-        } else {
-          if (emptyCount > 0) {
-            rowStr += emptyCount;
-            emptyCount = 0;
-          }
-          rowStr += piece[0] === 'w' ? piece[1].toUpperCase() : piece[1].toLowerCase();
-        }
-      }
-      if (emptyCount > 0) {
-        rowStr += emptyCount;
-      }
-      fenRows.push(rowStr);
-    }
-    const mockFen = `${fenRows.join('/')} w - - 0 1`;
-    new Chess(mockFen);
-  } catch (err: any) {
-    errors.push(`Generated FEN syntax is invalid: ${err.message || 'unknown error'}`);
-  }
-
   // --- Pawn checks ---
   const wp = counts['wp'] || 0;
   const bp = counts['bp'] || 0;
@@ -124,10 +92,10 @@ export function validatePosition(grid: string[]): PositionValidationResult {
     const rank8 = grid[c];           // row 0 = rank 8
     const rank1 = grid[56 + c];     // row 7 = rank 1
     if (rank8 === 'wp' || rank8 === 'bp') {
-      errors.push(`Pawn on rank 8 (column ${String.fromCharCode(97 + c)}).`);
+      warnings.push(`Pawn on rank 8 (file ${String.fromCharCode(97 + c)}) cannot occur in a played game; retained for composed-position editing.`);
     }
     if (rank1 === 'wp' || rank1 === 'bp') {
-      errors.push(`Pawn on rank 1 (column ${String.fromCharCode(97 + c)}).`);
+      warnings.push(`Pawn on rank 1 (file ${String.fromCharCode(97 + c)}) cannot occur in a played game; retained for composed-position editing.`);
     }
   }
 
@@ -139,8 +107,8 @@ export function validatePosition(grid: string[]): PositionValidationResult {
     else if (piece.startsWith('b')) blackTotal += count;
   }
 
-  if (whiteTotal > 16) errors.push(`Too many white pieces (${whiteTotal}, max 16).`);
-  if (blackTotal > 16) errors.push(`Too many black pieces (${blackTotal}, max 16).`);
+  if (whiteTotal > 16) warnings.push(`Position contains ${whiteTotal} white pieces; retained as an unusual composed position.`);
+  if (blackTotal > 16) warnings.push(`Position contains ${blackTotal} black pieces; retained as an unusual composed position.`);
 
   // --- Promotion-plausibility warnings (not errors) ---
   // A side can have extra pieces only via promotion, and each promotion consumes a pawn.

@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 1,
+  "model": {
+    "name": "ChessboardFenTensorflowJs frozen chess-piece classifier",
+    "version": "v1.0.0",
+    "upstreamRepository": "https://github.com/Elucidation/ChessboardFenTensorflowJs",
+    "upstreamRevision": "c75063981c4f781f63ac90c0c026402e23ebbef6",
+    "license": "MIT"
+  },
+  "runtime": {
+    "name": "TensorFlow.js",
+    "version": "0.15.3",
+    "license": "Apache-2.0",
+    "distribution": "Vendored browser runtime required by loadFrozenModel"
+  },
+  "contract": {
+    "alignedBoard": {
+      "width": 256,
+      "height": 256,
+      "channels": 1
+    },
+    "input": {
+      "name": "Input",
+      "shape": [64, 1024],
+      "dtype": "float32",
+      "pixelRange": [0, 255],
+      "normalization": "none",
+      "tileOrder": "file-major: a8..a1, b8..b1, through h8..h1"
+    },
+    "keepProbability": {
+      "name": "KeepProb",
+      "value": 1
+    },
+    "outputs": {
+      "probabilities": {
+        "name": "probabilities",
+        "shape": [64, 13],
+        "semantics": "softmax model scores"
+      },
+      "prediction": {
+        "name": "prediction",
+        "shape": [64],
+        "semantics": "argmax class indices"
+      }
+    },
+    "classes": [
+      "empty",
+      "white-king",
+      "white-queen",
+      "white-rook",
+      "white-bishop",
+      "white-knight",
+      "white-pawn",
+      "black-king",
+      "black-queen",
+      "black-rook",
+      "black-bishop",
+      "black-knight",
+      "black-pawn"
+    ],
+    "upstreamPreprocessing": "Resize the aligned board to 256x256, read the first pixel channel as float32 values in the 0-255 range, slice eight 256x32 files, reshape each to 8x1024, and concatenate to 64x1024. No normalization is applied."
+  },
+  "assets": [
+    {
+      "path": "public/tf.min.js",
+      "bytes": 967489,
+      "sha256": "8e51ada3786380cbe9937a53a8ad2f753f3014772033f28fa7dd859b8f0a81e4"
+    },
+    {
+      "path": "public/models/chess-ocr/tensorflowjs_model.pb",
+      "bytes": 2417,
+      "sha256": "ecfc6a1123d69f37bd8eba4394809dabbb15950973f91b439cbe48caa7f9a05f"
+    },
+    {
+      "path": "public/models/chess-ocr/weights_manifest.json",
+      "bytes": 812,
+      "sha256": "07fba17d74075d73592b1ea1903d62d1ab44ecb083d413a497df2b08ba14fc3c"
+    },
+    {
+      "path": "public/models/chess-ocr/group1-shard1of5",
+      "bytes": 4194304,
+      "sha256": "a9f1e00dae34443963de282e85d7ea24663bcf4387c7d7ad61fd594578ef03c4"
+    },
+    {
+      "path": "public/models/chess-ocr/group1-shard2of5",
+      "bytes": 4194304,
+      "sha256": "996bdb13f58d581564965b1d303cb5a47d4394bb55b7d0ec68be1911c32e6e67"
+    },
+    {
+      "path": "public/models/chess-ocr/group1-shard3of5",
+      "bytes": 4194304,
+      "sha256": "a754e2dafae30ec46648e17044fbc10c472cbd65b08285578d307414feeb57de"
+    },
+    {
+      "path": "public/models/chess-ocr/group1-shard4of5",
+      "bytes": 4194304,
+      "sha256": "dc705766881db0deb75f9cb0f169150609342dfb4a345c9dbea625768d5d7c92"
+    },
+    {
+      "path": "public/models/chess-ocr/group1-shard5of5",
+      "bytes": 265808,
+      "sha256": "3b911775bb51572f33bb0bbde668f7179841883b3ca643a6a78f8e1680f91598"
+    }
+  ]
+}
+

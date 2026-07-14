@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Chess, type Color, type PieceSymbol, type Square } from 'chess.js';
 import { ChessBoard } from './components/ChessBoard';
 import { MoveList } from './components/MoveList';
@@ -6,7 +6,6 @@ import { EnginePanel, evaluationForWhite } from './components/EnginePanel';
 import { ImportExportDialog } from './components/ImportExportDialog';
 import { ReviewPanel } from './components/ReviewPanel';
 import { ArchivePanel } from './components/ArchivePanel';
-import { ScanPanel } from './components/ScanPanel';
 import {
   StockfishClient,
   isAnalysisCancelled,
@@ -40,6 +39,10 @@ import type {
   ReviewMove,
   SavedGame,
 } from './types/chess';
+
+const ScanPanel = lazy(() => import('./components/ScanPanel').then((module) => ({
+  default: module.ScanPanel,
+})));
 
 const INITIAL_SETTINGS: AppSettings = {
   depth: 14,
@@ -562,6 +565,15 @@ function App() {
         <div className="brand">
           <span className="brand-mark" aria-hidden="true">♞</span>
           <div><strong>Chess Studio</strong><small>Offline analysis workspace</small></div>
+          <button
+            type="button"
+            className="version-label"
+            aria-label="About Chess Studio Local version 0.3.0"
+            title="About this local release"
+            onClick={() => showToast('Chess Studio Local v0.3.0 · browser-only analysis, Stockfish, and chess OCR')}
+          >
+            v0.3.0
+          </button>
         </div>
         <nav className="mode-tabs" aria-label="Workspace mode">
           {(['analysis', 'play', 'review', 'archive', 'scan'] as AppMode[]).map((item) => (
@@ -593,41 +605,43 @@ function App() {
 
       <main className="workspace">
         {mode === 'scan' ? (
-          <ScanPanel
-            onOpenAnalysis={(fen) => {
-              loadFen(fen);
-              changeMode('analysis');
-            }}
-            onOpenPlay={(fen, color) => {
-              setSettings((current) => ({
-                ...current,
-                engineColor: color === 'w' ? 'b' : 'w',
-              }));
-              loadFen(fen);
-              changeMode('play');
-            }}
-            onSaveToArchive={(name, fen) => {
-              const now = new Date().toISOString();
-              const saved: SavedGame = {
-                id: typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : String(Date.now()),
-                name,
-                pgn: `[FEN "${fen}"]\n*`,
-                fen,
-                createdAt: now,
-                updatedAt: now,
-                result: '*',
-                moveCount: 0,
-              };
-              const { success, games } = upsertGame(saved);
-              if (success) {
-                setSavedGames(games);
-                showToast('Game saved to archive');
-              } else {
-                showToast('Save failed: local storage is full');
-              }
-            }}
-            showToast={showToast}
-          />
+          <Suspense fallback={<div className="panel scanner-loading" role="status">Loading local scanner…</div>}>
+            <ScanPanel
+              onOpenAnalysis={(fen) => {
+                loadFen(fen);
+                changeMode('analysis');
+              }}
+              onOpenPlay={(fen, color) => {
+                setSettings((current) => ({
+                  ...current,
+                  engineColor: color === 'w' ? 'b' : 'w',
+                }));
+                loadFen(fen);
+                changeMode('play');
+              }}
+              onSaveToArchive={(name, fen) => {
+                const now = new Date().toISOString();
+                const saved: SavedGame = {
+                  id: typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : String(Date.now()),
+                  name,
+                  pgn: `[FEN "${fen}"]\n*`,
+                  fen,
+                  createdAt: now,
+                  updatedAt: now,
+                  result: '*',
+                  moveCount: 0,
+                };
+                const { success, games } = upsertGame(saved);
+                if (success) {
+                  setSavedGames(games);
+                  showToast('Game saved to archive');
+                } else {
+                  showToast('Save failed: local storage is full');
+                }
+              }}
+              showToast={showToast}
+            />
+          </Suspense>
         ) : (
           <>
             {mode !== 'archive' && (
@@ -680,7 +694,15 @@ function App() {
                 <ArchivePanel
                   games={savedGames}
                   onOpen={openSaved}
-                  onDelete={(id) => setSavedGames(deleteSavedGame(id))}
+                  onDelete={(id) => {
+                    const result = deleteSavedGame(id);
+                    if (result.success) {
+                      setSavedGames(result.games);
+                      showToast('Game deleted from this device');
+                    } else {
+                      showToast('Delete failed: local storage is unavailable');
+                    }
+                  }}
                 />
               ) : mode === 'review' ? (
                 <ReviewPanel

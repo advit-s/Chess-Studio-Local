@@ -46,18 +46,21 @@ test('home loads cleanly with a visible square board and local engine assets', a
   const errors = trackBrowserErrors(page);
   await openApp(page);
   const box = await page.getByTestId('chessboard').boundingBox();
+  await expect(page.getByText('v0.3.0', { exact: true })).toBeVisible();
   expect(box).not.toBeNull();
   expect(box?.width).toBeGreaterThan(200);
   expect(Math.abs((box?.width || 0) - (box?.height || 0))).toBeLessThan(1);
   await expect(page.locator('.engine-state')).not.toContainText('error', { ignoreCase: true });
-  const engineStatuses = await page.evaluate(async () => {
+  const assetState = await page.evaluate(async () => {
     const paths = [
       './engine/stockfish-18-lite-single.js',
       './engine/stockfish-18-lite-single.wasm',
     ];
-    return Promise.all(paths.map(async (path) => (await fetch(path)).status));
+    const statuses = await Promise.all(paths.map(async (path) => (await fetch(path)).status));
+    const manifest = await (await fetch('./manifest.webmanifest')).json();
+    return { statuses, manifestVersion: manifest.version };
   });
-  expect(engineStatuses).toEqual([200, 200]);
+  expect(assetState).toEqual({ statuses: [200, 200], manifestVersion: '0.3.0' });
   expect(errors).toEqual([]);
 });
 

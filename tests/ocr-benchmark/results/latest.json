@@ -1,0 +1,1005 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-13T23:31:35.388Z",
+  "runtime": {
+    "node": "v24.14.0",
+    "productionWorker": "public/scanWorker.js"
+  },
+  "model": {
+    "name": "Elucidation/ChessboardFenTensorflowJs",
+    "revision": "c75063981c4f781f63ac90c0c026402e23ebbef6",
+    "localOnly": true
+  },
+  "datasetLimitations": "This is a small regression benchmark. The upstream reference screenshot is associated with the model project and is not independent evidence. Generated and transformed fixtures must be reported separately and must not be used to claim broad real-world accuracy.",
+  "orientationLimitation": "The application asks the user to confirm White-at-bottom or Black-at-bottom. This benchmark applies the labelled orientation and does not claim automatic orientation detection.",
+  "categorySummary": {
+    "real-independent": {
+      "cases": 0,
+      "detectionSuccessRate": null,
+      "meanDetectionIoU": null,
+      "meanPerSquareAccuracy": null,
+      "meanOccupiedSquareAccuracy": null,
+      "meanEmptySquareAccuracy": null,
+      "fullPositionExactRate": null,
+      "passed": 0,
+      "failed": 0
+    },
+    "generated-application": {
+      "cases": 4,
+      "detectionSuccessRate": 1,
+      "meanDetectionIoU": 0.9956138636771458,
+      "meanPerSquareAccuracy": 0.87109375,
+      "meanOccupiedSquareAccuracy": 0.40625,
+      "meanEmptySquareAccuracy": 1,
+      "fullPositionExactRate": 0.25,
+      "passed": 1,
+      "failed": 3
+    },
+    "augmented-transformed": {
+      "cases": 4,
+      "detectionSuccessRate": 1,
+      "meanDetectionIoU": 0.9911249310045952,
+      "meanPerSquareAccuracy": 1,
+      "meanOccupiedSquareAccuracy": 1,
+      "meanEmptySquareAccuracy": 1,
+      "fullPositionExactRate": 1,
+      "passed": 4,
+      "failed": 0
+    },
+    "upstream-reference": {
+      "cases": 1,
+      "detectionSuccessRate": 1,
+      "meanDetectionIoU": 0.9971898950211144,
+      "meanPerSquareAccuracy": 1,
+      "meanOccupiedSquareAccuracy": 1,
+      "meanEmptySquareAccuracy": 1,
+      "fullPositionExactRate": 1,
+      "passed": 1,
+      "failed": 0
+    }
+  },
+  "results": [
+    {
+      "id": "upstream-reference-example",
+      "category": "upstream-reference",
+      "source": {
+        "description": "Example screenshot bundled by Elucidation/ChessboardFenTensorflowJs",
+        "url": "https://github.com/Elucidation/ChessboardFenTensorflowJs/blob/c75063981c4f781f63ac90c0c026402e23ebbef6/example_input.png",
+        "revision": "c75063981c4f781f63ac90c0c026402e23ebbef6",
+        "licence": "MIT repository; screenshot retained solely as the upstream model regression fixture",
+        "independence": "not-independent-from-model-project"
+      },
+      "tags": [
+        "real-screenshot",
+        "coordinates",
+        "side-panel",
+        "upstream-reference"
+      ],
+      "fixture": {
+        "file": "example_input.png",
+        "sha256": "d964453dd523cc2f9450166e6445244f865c587455960125ea2bbc62311cc97a",
+        "width": 1102,
+        "height": 1028
+      },
+      "boardDetection": {
+        "success": true,
+        "quality": "good",
+        "score": 0.9839587617667414,
+        "signals": {
+          "horizontalGrid": 0.9993073593073593,
+          "verticalGrid": 0.989010989010989,
+          "alternatingSquares": 1,
+          "squareAspect": 0.9086339473538109,
+          "edgeRefinement": 0.6611111111111111
+        },
+        "iou": 0.9971898950211144,
+        "expectedCorners": {
+          "topLeft": {
+            "x": 74,
+            "y": 39
+          },
+          "topRight": {
+            "x": 984,
+            "y": 39
+          },
+          "bottomRight": {
+            "x": 984,
+            "y": 949
+          },
+          "bottomLeft": {
+            "x": 74,
+            "y": 949
+          }
+        },
+        "detectedCorners": {
+          "topLeft": {
+            "x": 74.38499999999999,
+            "y": 38.57
+          },
+          "topRight": {
+            "x": 983.535,
+            "y": 38.57
+          },
+          "bottomLeft": {
+            "x": 74.38499999999999,
+            "y": 947.7199999999999
+          },
+          "bottomRight": {
+            "x": 983.535,
+            "y": 947.7199999999999
+          }
+        },
+        "recognitionCropSource": "automatic-detection"
+      },
+      "orientation": {
+        "automaticSuggestionAvailable": false,
+        "evaluationMode": "fixture-label-confirmed",
+        "expected": "white",
+        "applied": "white",
+        "correctAfterConfirmation": true
+      },
+      "accuracy": {
+        "perSquareAccuracy": 1,
+        "occupiedSquareAccuracy": 1,
+        "emptySquareAccuracy": 1,
+        "fullPositionExact": true,
+        "wrongSquares": []
+      },
+      "expectedBoardFen": "rn1qkb1r/p4ppb/1pp1pn1p/4N3/2BP2P1/1QN1P2P/PP3P2/R1B2RK1",
+      "expectedCompleteFen": "rn1qkb1r/p4ppb/1pp1pn1p/4N3/2BP2P1/1QN1P2P/PP3P2/R1B2RK1 w Qkq - 0 1",
+      "detectedBoardFen": "rn1qkb1r/p4ppb/1pp1pn1p/4N3/2BP2P1/1QN1P2P/PP3P2/R1B2RK1",
+      "performance": {
+        "detectionMs": 235.99386500000003,
+        "warpMs": 7.097161000000028,
+        "modelLoadMs": 3249.135042,
+        "modelWaitMs": 3249.277933,
+        "inferenceMs": 3215.6285179999995,
+        "totalCaseMs": 6710.582453,
+        "peakProcessRssBytes": 270581760,
+        "memoryScope": "Node process RSS including worker; not browser heap"
+      },
+      "passed": true
+    },
+    {
+      "id": "generated-start-light",
+      "category": "generated-application",
+      "source": {
+        "description": "Deterministic Chess Studio Local board render using DejaVu Sans Unicode chess glyphs",
+        "generator": "scripts/generate-ocr-fixtures.mjs",
+        "url": "https://dejavu-fonts.github.io/",
+        "licence": "Bitstream Vera font licence; DejaVu changes are public domain",
+        "independence": "generated-application-fixture"
+      },
+      "tags": [
+        "starting-position",
+        "light-theme",
+        "coordinates",
+        "surrounding-panels",
+        "dejavu-sans"
+      ],
+      "fixture": {
+        "file": "generated-start-light.png",
+        "sha256": "2ec0177005d1142e111d0baf6fe9c45aa007cf39a4e6c6d2d345de8c5e44dc6d",
+        "width": 900,
+        "height": 640
+      },
+      "boardDetection": {
+        "success": true,
+        "quality": "good",
+        "score": 0.999018250471995,
+        "signals": {
+          "horizontalGrid": 0.9964757709251101,
+          "verticalGrid": 0.9986154814348647,
+          "alternatingSquares": 1,
+          "squareAspect": 1,
+          "edgeRefinement": 0.8333333333333334
+        },
+        "iou": 0.9941518182361945,
+        "expectedCorners": {
+          "topLeft": {
+            "x": 88,
+            "y": 64
+          },
+          "topRight": {
+            "x": 600,
+            "y": 64
+          },
+          "bottomRight": {
+            "x": 600,
+            "y": 576
+          },
+          "bottomLeft": {
+            "x": 88,
+            "y": 576
+          }
+        },
+        "detectedCorners": {
+          "topLeft": {
+            "x": 87.75,
+            "y": 65.25
+          },
+          "topRight": {
+            "x": 598.5,
+            "y": 65.25
+          },
+          "bottomLeft": {
+            "x": 87.75,
+            "y": 576
+          },
+          "bottomRight": {
+            "x": 598.5,
+            "y": 576
+          }
+        },
+        "recognitionCropSource": "automatic-detection"
+      },
+      "orientation": {
+        "automaticSuggestionAvailable": false,
+        "evaluationMode": "fixture-label-confirmed",
+        "expected": "white",
+        "applied": "white",
+        "correctAfterConfirmation": true
+      },
+      "accuracy": {
+        "perSquareAccuracy": 0.828125,
+        "occupiedSquareAccuracy": 0.65625,
+        "emptySquareAccuracy": 1,
+        "fullPositionExact": false,
+        "wrongSquares": [
+          "b8: expected bn, detected wp",
+          "c8: expected bb, detected bp",
+          "d8: expected bq, detected wp",
+          "f8: expected bb, detected bp",
+          "g8: expected bn, detected bp",
+          "b1: expected wn, detected wp",
+          "c1: expected wb, detected wp",
+          "d1: expected wq, detected wp",
+          "e1: expected wk, detected wp",
+          "f1: expected wb, detected wp",
+          "g1: expected wn, detected wp"
+        ]
+      },
+      "expectedBoardFen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR",
+      "expectedCompleteFen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+      "detectedBoardFen": "rPpPkppr/pppppppp/8/8/8/8/PPPPPPPP/RPPPPPPR",
+      "performance": {
+        "detectionMs": 192.92093100000056,
+        "warpMs": 6.369570000000749,
+        "modelLoadMs": 3249.135042,
+        "modelWaitMs": 0.004226000000016938,
+        "inferenceMs": 3208.92058,
+        "totalCaseMs": 3409.6231099999995,
+        "peakProcessRssBytes": 239816704,
+        "memoryScope": "Node process RSS including worker; not browser heap"
+      },
+      "passed": false
+    },
+    {
+      "id": "generated-empty-dark",
+      "category": "generated-application",
+      "source": {
+        "description": "Deterministic Chess Studio Local board render using DejaVu Sans Unicode chess glyphs",
+        "generator": "scripts/generate-ocr-fixtures.mjs",
+        "url": "https://dejavu-fonts.github.io/",
+        "licence": "Bitstream Vera font licence; DejaVu changes are public domain",
+        "independence": "generated-application-fixture"
+      },
+      "tags": [
+        "empty-board",
+        "dark-theme",
+        "no-coordinates",
+        "dejavu-sans"
+      ],
+      "fixture": {
+        "file": "generated-empty-dark.png",
+        "sha256": "a913b7310ead302f71c2d608639a987f68b36464b8f97369c93df87c2d3d6a47",
+        "width": 640,
+        "height": 640
+      },
+      "boardDetection": {
+        "success": true,
+        "quality": "good",
+        "score": 0.999,
+        "signals": {
+          "horizontalGrid": 0.9975,
+          "verticalGrid": 0.9975,
+          "alternatingSquares": 1,
+          "squareAspect": 1,
+          "edgeRefinement": 1
+        },
+        "iou": 1,
+        "expectedCorners": {
+          "topLeft": {
+            "x": 64,
+            "y": 64
+          },
+          "topRight": {
+            "x": 576,
+            "y": 64
+          },
+          "bottomRight": {
+            "x": 576,
+            "y": 576
+          },
+          "bottomLeft": {
+            "x": 64,
+            "y": 576
+          }
+        },
+        "detectedCorners": {
+          "topLeft": {
+            "x": 64,
+            "y": 64
+          },
+          "topRight": {
+            "x": 576,
+            "y": 64
+          },
+          "bottomLeft": {
+            "x": 64,
+            "y": 576
+          },
+          "bottomRight": {
+            "x": 576,
+            "y": 576
+          }
+        },
+        "recognitionCropSource": "automatic-detection"
+      },
+      "orientation": {
+        "automaticSuggestionAvailable": false,
+        "evaluationMode": "fixture-label-confirmed",
+        "expected": "white",
+        "applied": "white",
+        "correctAfterConfirmation": true
+      },
+      "accuracy": {
+        "perSquareAccuracy": 1,
+        "occupiedSquareAccuracy": null,
+        "emptySquareAccuracy": 1,
+        "fullPositionExact": true,
+        "wrongSquares": []
+      },
+      "expectedBoardFen": "8/8/8/8/8/8/8/8",
+      "expectedCompleteFen": "8/8/8/8/8/8/8/8 w - - 0 1",
+      "detectedBoardFen": "8/8/8/8/8/8/8/8",
+      "performance": {
+        "detectionMs": 131.0639259999989,
+        "warpMs": 6.027066000000559,
+        "modelLoadMs": 3249.135042,
+        "modelWaitMs": 0.005979000001389068,
+        "inferenceMs": 4178.216957999999,
+        "totalCaseMs": 4316.603076000001,
+        "peakProcessRssBytes": 239906816,
+        "memoryScope": "Node process RSS including worker; not browser heap"
+      },
+      "passed": true
+    },
+    {
+      "id": "generated-middlegame-dark",
+      "category": "generated-application",
+      "source": {
+        "description": "Deterministic Chess Studio Local board render using DejaVu Sans Unicode chess glyphs",
+        "generator": "scripts/generate-ocr-fixtures.mjs",
+        "url": "https://dejavu-fonts.github.io/",
+        "licence": "Bitstream Vera font licence; DejaVu changes are public domain",
+        "independence": "generated-application-fixture"
+      },
+      "tags": [
+        "middlegame",
+        "dark-theme",
+        "coordinates",
+        "surrounding-panels",
+        "dejavu-sans"
+      ],
+      "fixture": {
+        "file": "generated-middlegame-dark.png",
+        "sha256": "bc73a9c3bf2b507d2a069acbbf4a216a272cb2640b55b6260e58b99fe3539df7",
+        "width": 900,
+        "height": 640
+      },
+      "boardDetection": {
+        "success": true,
+        "quality": "good",
+        "score": 0.9989679043423537,
+        "signals": {
+          "horizontalGrid": 0.9962240402769037,
+          "verticalGrid": 0.9986154814348647,
+          "alternatingSquares": 1,
+          "squareAspect": 1,
+          "edgeRefinement": 0.8472222222222221
+        },
+        "iou": 0.9941518182361945,
+        "expectedCorners": {
+          "topLeft": {
+            "x": 88,
+            "y": 64
+          },
+          "topRight": {
+            "x": 600,
+            "y": 64
+          },
+          "bottomRight": {
+            "x": 600,
+            "y": 576
+          },
+          "bottomLeft": {
+            "x": 88,
+            "y": 576
+          }
+        },
+        "detectedCorners": {
+          "topLeft": {
+            "x": 87.75,
+            "y": 65.25
+          },
+          "topRight": {
+            "x": 598.5,
+            "y": 65.25
+          },
+          "bottomLeft": {
+            "x": 87.75,
+            "y": 576
+          },
+          "bottomRight": {
+            "x": 598.5,
+            "y": 576
+          }
+        },
+        "recognitionCropSource": "automatic-detection"
+      },
+      "orientation": {
+        "automaticSuggestionAvailable": false,
+        "evaluationMode": "fixture-label-confirmed",
+        "expected": "white",
+        "applied": "white",
+        "correctAfterConfirmation": true
+      },
+      "accuracy": {
+        "perSquareAccuracy": 0.78125,
+        "occupiedSquareAccuracy": 0.5625,
+        "emptySquareAccuracy": 1,
+        "fullPositionExact": false,
+        "wrongSquares": [
+          "c8: expected bb, detected bp",
+          "d8: expected bq, detected wp",
+          "f8: expected br, detected wp",
+          "g8: expected bk, detected wp",
+          "e7: expected bb, detected wk",
+          "c6: expected bn, detected wp",
+          "f6: expected bn, detected wn",
+          "d3: expected wb, detected wp",
+          "f3: expected wn, detected wp",
+          "d2: expected wn, detected wp",
+          "h2: expected wp, detected wb",
+          "c1: expected wb, detected wp",
+          "d1: expected wq, detected wp",
+          "g1: expected wk, detected wp"
+        ]
+      },
+      "expectedBoardFen": "r1bq1rk1/pp2bppp/2n1pn2/2pp4/3P4/2PBPN2/PP1N1PPP/R1BQR1K1",
+      "expectedCompleteFen": "r1bq1rk1/pp2bppp/2n1pn2/2pp4/3P4/2PBPN2/PP1N1PPP/R1BQR1K1 w - - 0 1",
+      "detectedBoardFen": "r1pP1PP1/pp2Kppp/2P1pN2/2pp4/3P4/2PPPP2/PP1P1PPB/R1PPR1P1",
+      "performance": {
+        "detectionMs": 160.09741500000018,
+        "warpMs": 5.382770000000164,
+        "modelLoadMs": 3249.135042,
+        "modelWaitMs": 0.004786999999851105,
+        "inferenceMs": 3314.660851999999,
+        "totalCaseMs": 3481.9241900000015,
+        "peakProcessRssBytes": 250134528,
+        "memoryScope": "Node process RSS including worker; not browser heap"
+      },
+      "passed": false
+    },
+    {
+      "id": "generated-endgame-black-wood",
+      "category": "generated-application",
+      "source": {
+        "description": "Deterministic Chess Studio Local board render using DejaVu Sans Mono Unicode chess glyphs",
+        "generator": "scripts/generate-ocr-fixtures.mjs",
+        "url": "https://dejavu-fonts.github.io/",
+        "licence": "Bitstream Vera font licence; DejaVu changes are public domain",
+        "independence": "generated-application-fixture"
+      },
+      "tags": [
+        "endgame",
+        "black-at-bottom",
+        "wood-theme",
+        "coordinates",
+        "surrounding-panels",
+        "dejavu-sans-mono"
+      ],
+      "fixture": {
+        "file": "generated-endgame-black-wood.png",
+        "sha256": "6b9e8923468ca4fcadb017cae6a87cca2e8f8ca599fa92b6fbf429159270d386",
+        "width": 900,
+        "height": 640
+      },
+      "boardDetection": {
+        "success": true,
+        "quality": "good",
+        "score": 0.9989679043423537,
+        "signals": {
+          "horizontalGrid": 0.9962240402769037,
+          "verticalGrid": 0.9986154814348647,
+          "alternatingSquares": 1,
+          "squareAspect": 1,
+          "edgeRefinement": 0.9953703703703703
+        },
+        "iou": 0.9941518182361945,
+        "expectedCorners": {
+          "topLeft": {
+            "x": 88,
+            "y": 64
+          },
+          "topRight": {
+            "x": 600,
+            "y": 64
+          },
+          "bottomRight": {
+            "x": 600,
+            "y": 576
+          },
+          "bottomLeft": {
+            "x": 88,
+            "y": 576
+          }
+        },
+        "detectedCorners": {
+          "topLeft": {
+            "x": 87.75,
+            "y": 65.25
+          },
+          "topRight": {
+            "x": 598.5,
+            "y": 65.25
+          },
+          "bottomLeft": {
+            "x": 87.75,
+            "y": 576
+          },
+          "bottomRight": {
+            "x": 598.5,
+            "y": 576
+          }
+        },
+        "recognitionCropSource": "automatic-detection"
+      },
+      "orientation": {
+        "automaticSuggestionAvailable": false,
+        "evaluationMode": "fixture-label-confirmed",
+        "expected": "black",
+        "applied": "black",
+        "correctAfterConfirmation": true
+      },
+      "accuracy": {
+        "perSquareAccuracy": 0.875,
+        "occupiedSquareAccuracy": 0,
+        "emptySquareAccuracy": 1,
+        "fullPositionExact": false,
+        "wrongSquares": [
+          "f7: expected bp, detected wp",
+          "g7: expected bk, detected wn",
+          "g6: expected bp, detected wp",
+          "d5: expected bp, detected wp",
+          "d4: expected wp, detected wn",
+          "f4: expected wp, detected wn",
+          "g3: expected wp, detected wn",
+          "f2: expected wk, detected wp"
+        ]
+      },
+      "expectedBoardFen": "8/5pk1/6p1/3p4/3P1P2/6P1/5K2/8",
+      "expectedCompleteFen": "8/5pk1/6p1/3p4/3P1P2/6P1/5K2/8 w - - 0 1",
+      "detectedBoardFen": "8/5PN1/6P1/3P4/3N1N2/6N1/5P2/8",
+      "performance": {
+        "detectionMs": 94.83561399999962,
+        "warpMs": 5.133923000001232,
+        "modelLoadMs": 3249.135042,
+        "modelWaitMs": 0.005026999999245163,
+        "inferenceMs": 3179.0304570000008,
+        "totalCaseMs": 3280.611596999999,
+        "peakProcessRssBytes": 259440640,
+        "memoryScope": "Node process RSS including worker; not browser heap"
+      },
+      "passed": false
+    },
+    {
+      "id": "augmented-scale-55",
+      "category": "augmented-transformed",
+      "source": {
+        "description": "Deterministic 55% scaling regression transform of the upstream reference screenshot",
+        "generator": "scripts/generate-ocr-fixtures.mjs",
+        "licence": "MIT repository upstream reference; transformed fixture is not independent evidence",
+        "independence": "augmentation-of-upstream-reference"
+      },
+      "tags": [
+        "scaling",
+        "low-resolution",
+        "upstream-derived"
+      ],
+      "fixture": {
+        "file": "augmented-scale-55.png",
+        "sha256": "3426a9d2f1a5906ae80d482dabce408f50b7da26bf17037a4cfe2f7713ed3224",
+        "width": 606,
+        "height": 565
+      },
+      "boardDetection": {
+        "success": true,
+        "quality": "good",
+        "score": 0.9840263864497507,
+        "signals": {
+          "horizontalGrid": 0.9993073593073593,
+          "verticalGrid": 0.9893491124260355,
+          "alternatingSquares": 1,
+          "squareAspect": 0.9086339473538109,
+          "edgeRefinement": 0.6611111111111111
+        },
+        "iou": 0.9977775597770936,
+        "expectedCorners": {
+          "topLeft": {
+            "x": 40.6933,
+            "y": 21.4348
+          },
+          "topRight": {
+            "x": 541.1107,
+            "y": 21.4348
+          },
+          "bottomRight": {
+            "x": 541.1107,
+            "y": 521.5807
+          },
+          "bottomLeft": {
+            "x": 40.6933,
+            "y": 521.5807
+          }
+        },
+        "detectedCorners": {
+          "topLeft": {
+            "x": 40.905,
+            "y": 21.21
+          },
+          "topRight": {
+            "x": 540.855,
+            "y": 21.21
+          },
+          "bottomLeft": {
+            "x": 40.905,
+            "y": 521.1600000000001
+          },
+          "bottomRight": {
+            "x": 540.855,
+            "y": 521.1600000000001
+          }
+        },
+        "recognitionCropSource": "automatic-detection"
+      },
+      "orientation": {
+        "automaticSuggestionAvailable": false,
+        "evaluationMode": "fixture-label-confirmed",
+        "expected": "white",
+        "applied": "white",
+        "correctAfterConfirmation": true
+      },
+      "accuracy": {
+        "perSquareAccuracy": 1,
+        "occupiedSquareAccuracy": 1,
+        "emptySquareAccuracy": 1,
+        "fullPositionExact": true,
+        "wrongSquares": []
+      },
+      "expectedBoardFen": "rn1qkb1r/p4ppb/1pp1pn1p/4N3/2BP2P1/1QN1P2P/PP3P2/R1B2RK1",
+      "expectedCompleteFen": "rn1qkb1r/p4ppb/1pp1pn1p/4N3/2BP2P1/1QN1P2P/PP3P2/R1B2RK1 w Qkq - 0 1",
+      "detectedBoardFen": "rn1qkb1r/p4ppb/1pp1pn1p/4N3/2BP2P1/1QN1P2P/PP3P2/R1B2RK1",
+      "performance": {
+        "detectionMs": 199.13551400000142,
+        "warpMs": 6.951935000000958,
+        "modelLoadMs": 3249.135042,
+        "modelWaitMs": 0.004906999998638639,
+        "inferenceMs": 3203.117040000001,
+        "totalCaseMs": 3414.3384970000006,
+        "peakProcessRssBytes": 270450688,
+        "memoryScope": "Node process RSS including worker; not browser heap"
+      },
+      "passed": true
+    },
+    {
+      "id": "augmented-compressed-panels",
+      "category": "augmented-transformed",
+      "source": {
+        "description": "Deterministic darkening, JPEG quality 38, and surrounding panels regression transform of the upstream reference screenshot",
+        "generator": "scripts/generate-ocr-fixtures.mjs",
+        "licence": "MIT repository upstream reference; transformed fixture is not independent evidence",
+        "independence": "augmentation-of-upstream-reference"
+      },
+      "tags": [
+        "compression",
+        "light-dark-adjustment",
+        "surrounding-panels",
+        "upstream-derived"
+      ],
+      "fixture": {
+        "file": "augmented-compressed-panels.png",
+        "sha256": "14f80ade5a15cba5028fd44dc720678ff7475493d79d06eb314a71dd0f81b44d",
+        "width": 1282,
+        "height": 1124
+      },
+      "boardDetection": {
+        "success": true,
+        "quality": "good",
+        "score": 0.9821026154599992,
+        "signals": {
+          "horizontalGrid": 0.9983903420523139,
+          "verticalGrid": 0.9909980430528376,
+          "alternatingSquares": 1,
+          "squareAspect": 0.8948329229264589,
+          "edgeRefinement": 0.6666666666666666
+        },
+        "iou": 0.9912622739103478,
+        "expectedCorners": {
+          "topLeft": {
+            "x": 164,
+            "y": 87
+          },
+          "topRight": {
+            "x": 1074,
+            "y": 87
+          },
+          "bottomRight": {
+            "x": 1074,
+            "y": 997
+          },
+          "bottomLeft": {
+            "x": 164,
+            "y": 997
+          }
+        },
+        "detectedCorners": {
+          "topLeft": {
+            "x": 160.25,
+            "y": 86.535
+          },
+          "topRight": {
+            "x": 1070.47,
+            "y": 86.535
+          },
+          "bottomLeft": {
+            "x": 160.25,
+            "y": 996.755
+          },
+          "bottomRight": {
+            "x": 1070.47,
+            "y": 996.755
+          }
+        },
+        "recognitionCropSource": "automatic-detection"
+      },
+      "orientation": {
+        "automaticSuggestionAvailable": false,
+        "evaluationMode": "fixture-label-confirmed",
+        "expected": "white",
+        "applied": "white",
+        "correctAfterConfirmation": true
+      },
+      "accuracy": {
+        "perSquareAccuracy": 1,
+        "occupiedSquareAccuracy": 1,
+        "emptySquareAccuracy": 1,
+        "fullPositionExact": true,
+        "wrongSquares": []
+      },
+      "expectedBoardFen": "rn1qkb1r/p4ppb/1pp1pn1p/4N3/2BP2P1/1QN1P2P/PP3P2/R1B2RK1",
+      "expectedCompleteFen": "rn1qkb1r/p4ppb/1pp1pn1p/4N3/2BP2P1/1QN1P2P/PP3P2/R1B2RK1 w Qkq - 0 1",
+      "detectedBoardFen": "rn1qkb1r/p4ppb/1pp1pn1p/4N3/2BP2P1/1QN1P2P/PP3P2/R1B2RK1",
+      "performance": {
+        "detectionMs": 173.28674300000057,
+        "warpMs": 5.852100000000064,
+        "modelLoadMs": 3249.135042,
+        "modelWaitMs": 0.0070100000011734664,
+        "inferenceMs": 3183.7242450000012,
+        "totalCaseMs": 3364.941361000001,
+        "peakProcessRssBytes": 272023552,
+        "memoryScope": "Node process RSS including worker; not browser heap"
+      },
+      "passed": true
+    },
+    {
+      "id": "augmented-rotate-1-5",
+      "category": "augmented-transformed",
+      "source": {
+        "description": "Deterministic 1.5 degree rotation regression transform of the upstream reference screenshot",
+        "generator": "scripts/generate-ocr-fixtures.mjs",
+        "licence": "MIT repository upstream reference; transformed fixture is not independent evidence",
+        "independence": "augmentation-of-upstream-reference"
+      },
+      "tags": [
+        "rotation",
+        "upstream-derived"
+      ],
+      "fixture": {
+        "file": "augmented-rotate-1_5.png",
+        "sha256": "646b153ed0473f630b50642479067f8b94567a9ef08ceaf73601b759fa9e3c5a",
+        "width": 1130,
+        "height": 1058
+      },
+      "boardDetection": {
+        "success": true,
+        "quality": "good",
+        "score": 0.9811404728682973,
+        "signals": {
+          "horizontalGrid": 0.9905967450271248,
+          "verticalGrid": 0.9900460829493087,
+          "alternatingSquares": 0.9912976284167563,
+          "squareAspect": 0.9261864965698018,
+          "edgeRefinement": 0.6581632653061225,
+          "gridAlignment": 94.08203125
+        },
+        "iou": 0.9914132278289155,
+        "expectedCorners": {
+          "topLeft": {
+            "x": 100.5842,
+            "y": 41.6893
+          },
+          "topRight": {
+            "x": 1010.2724,
+            "y": 65.5103
+          },
+          "bottomRight": {
+            "x": 986.4514,
+            "y": 975.1985
+          },
+          "bottomLeft": {
+            "x": 76.7632,
+            "y": 951.3774
+          }
+        },
+        "detectedCorners": {
+          "topLeft": {
+            "x": 104.1613205009708,
+            "y": 42.49291595858504
+          },
+          "topRight": {
+            "x": 1013.0830036189776,
+            "y": 68.29800785680577
+          },
+          "bottomLeft": {
+            "x": 76.61348375615881,
+            "y": 950.0852035887438
+          },
+          "bottomRight": {
+            "x": 989.2605064534115,
+            "y": 973.3264318575831
+          }
+        },
+        "recognitionCropSource": "automatic-detection"
+      },
+      "orientation": {
+        "automaticSuggestionAvailable": false,
+        "evaluationMode": "fixture-label-confirmed",
+        "expected": "white",
+        "applied": "white",
+        "correctAfterConfirmation": true
+      },
+      "accuracy": {
+        "perSquareAccuracy": 1,
+        "occupiedSquareAccuracy": 1,
+        "emptySquareAccuracy": 1,
+        "fullPositionExact": true,
+        "wrongSquares": []
+      },
+      "expectedBoardFen": "rn1qkb1r/p4ppb/1pp1pn1p/4N3/2BP2P1/1QN1P2P/PP3P2/R1B2RK1",
+      "expectedCompleteFen": "rn1qkb1r/p4ppb/1pp1pn1p/4N3/2BP2P1/1QN1P2P/PP3P2/R1B2RK1 w Qkq - 0 1",
+      "detectedBoardFen": "rn1qkb1r/p4ppb/1pp1pn1p/4N3/2BP2P1/1QN1P2P/PP3P2/R1B2RK1",
+      "performance": {
+        "detectionMs": 191.37477099999887,
+        "warpMs": 11.885508999999729,
+        "modelLoadMs": 3249.135042,
+        "modelWaitMs": 0.004355999997642357,
+        "inferenceMs": 3259.226733000003,
+        "totalCaseMs": 3463.989795999998,
+        "peakProcessRssBytes": 275300352,
+        "memoryScope": "Node process RSS including worker; not browser heap"
+      },
+      "passed": true
+    },
+    {
+      "id": "augmented-perspective",
+      "category": "augmented-transformed",
+      "source": {
+        "description": "Deterministic projective distortion regression transform of the upstream reference screenshot",
+        "generator": "scripts/generate-ocr-fixtures.mjs",
+        "licence": "MIT repository upstream reference; transformed fixture is not independent evidence",
+        "independence": "augmentation-of-upstream-reference"
+      },
+      "tags": [
+        "perspective-distortion",
+        "upstream-derived"
+      ],
+      "fixture": {
+        "file": "augmented-perspective.png",
+        "sha256": "2d2759c45eef6ed3e1884069732778db442c919f92eff38da5a5dfdc3eebd721",
+        "width": 1102,
+        "height": 1028
+      },
+      "boardDetection": {
+        "success": true,
+        "quality": "good",
+        "score": 0.896506438310472,
+        "signals": {
+          "horizontalGrid": 0.9917050691244239,
+          "verticalGrid": 0.9905990783410138,
+          "alternatingSquares": 0.7778791307052989,
+          "squareAspect": 1,
+          "edgeRefinement": 0.586734693877551,
+          "gridAlignment": 94.30078125
+        },
+        "iou": 0.9840466625020241,
+        "expectedCorners": {
+          "topLeft": {
+            "x": 91.6893,
+            "y": 52.3542
+          },
+          "topRight": {
+            "x": 964.9369,
+            "y": 38.6475
+          },
+          "bottomRight": {
+            "x": 993.8356,
+            "y": 942.4278
+          },
+          "bottomLeft": {
+            "x": 73.9961,
+            "y": 926.3087
+          }
+        },
+        "detectedCorners": {
+          "topLeft": {
+            "x": 87.77092679473883,
+            "y": 55.39335021240406
+          },
+          "topRight": {
+            "x": 960.9852043474884,
+            "y": 44.45008963505469
+          },
+          "bottomLeft": {
+            "x": 71.45121527799616,
+            "y": 923.6309168258251
+          },
+          "bottomRight": {
+            "x": 987.385637173963,
+            "y": 941.8962542118854
+          }
+        },
+        "recognitionCropSource": "automatic-detection"
+      },
+      "orientation": {
+        "automaticSuggestionAvailable": false,
+        "evaluationMode": "fixture-label-confirmed",
+        "expected": "white",
+        "applied": "white",
+        "correctAfterConfirmation": true
+      },
+      "accuracy": {
+        "perSquareAccuracy": 1,
+        "occupiedSquareAccuracy": 1,
+        "emptySquareAccuracy": 1,
+        "fullPositionExact": true,
+        "wrongSquares": []
+      },
+      "expectedBoardFen": "rn1qkb1r/p4ppb/1pp1pn1p/4N3/2BP2P1/1QN1P2P/PP3P2/R1B2RK1",
+      "expectedCompleteFen": "rn1qkb1r/p4ppb/1pp1pn1p/4N3/2BP2P1/1QN1P2P/PP3P2/R1B2RK1 w Qkq - 0 1",
+      "detectedBoardFen": "rn1qkb1r/p4ppb/1pp1pn1p/4N3/2BP2P1/1QN1P2P/PP3P2/R1B2RK1",
+      "performance": {
+        "detectionMs": 198.9705780000004,
+        "warpMs": 7.865656999998464,
+        "modelLoadMs": 3249.135042,
+        "modelWaitMs": 0.010756000003311783,
+        "inferenceMs": 3291.830347000003,
+        "totalCaseMs": 3500.5446420000007,
+        "peakProcessRssBytes": 280543232,
+        "memoryScope": "Node process RSS including worker; not browser heap"
+      },
+      "passed": true
+    }
+  ]
+}

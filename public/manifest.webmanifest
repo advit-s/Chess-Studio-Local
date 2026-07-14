@@ -1,6 +1,7 @@
 {
   "name": "Chess Studio Local",
   "short_name": "Chess Studio",
+  "version": "0.3.0",
   "description": "Private offline chess analysis and training powered by Stockfish.",
   "start_url": "./",
   "scope": "./",

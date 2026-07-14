@@ -142,6 +142,23 @@ button:disabled {
   font-size: 11px;
 }
 
+.version-label {
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 7px;
+  color: var(--muted);
+  background: var(--surface);
+  font-size: 10px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.version-label:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
 .mode-tabs {
   display: flex;
   min-width: 0;
@@ -255,6 +272,145 @@ button:disabled {
   margin: 0 auto;
   padding: clamp(16px, 2.2vw, 28px);
   gap: clamp(18px, 2vw, 26px);
+}
+
+/* Scanner workstation -----------------------------------------------------
+ * The scanner is a full-width instrument inside the application's outer
+ * workspace. Its two rails are intentionally independent: the source image
+ * stays visually dominant while correction tools scroll alongside it. */
+.scan-workspace {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1.16fr) minmax(420px, .84fr);
+  align-items: start;
+  width: 100%;
+  min-width: 0;
+  gap: clamp(18px, 2vw, 26px);
+}
+
+.scan-input-panel {
+  display: flex;
+  min-height: 420px;
+  flex-direction: column;
+  box-shadow: inset 0 3px 0 color-mix(in srgb, var(--accent) 72%, transparent), 0 14px 45px rgba(0, 0, 0, .12);
+}
+
+.scan-input-panel .panel-title-row {
+  flex-wrap: wrap;
+}
+
+.scan-upload-mark {
+  display: grid;
+  width: 58px;
+  height: 58px;
+  margin-bottom: 14px;
+  place-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  color: var(--accent);
+  background:
+    linear-gradient(45deg, color-mix(in srgb, var(--accent) 12%, transparent) 25%, transparent 25%, transparent 75%, color-mix(in srgb, var(--accent) 12%, transparent) 75%),
+    linear-gradient(45deg, color-mix(in srgb, var(--accent) 12%, transparent) 25%, transparent 25%, transparent 75%, color-mix(in srgb, var(--accent) 12%, transparent) 75%);
+  background-position: 0 0, 7px 7px;
+  background-size: 14px 14px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .04em;
+}
+
+.scan-side-column {
+  min-width: 0;
+}
+
+.scan-crop-toolbar,
+.scan-crop-actions,
+.scan-crop-status,
+.orientation-selector,
+.scan-castling-options,
+.scan-fen-row,
+.scan-action-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scan-crop-toolbar {
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.scan-crop-actions,
+.scan-crop-status,
+.orientation-selector,
+.scan-castling-options,
+.scan-fen-row,
+.scan-action-row {
+  flex-wrap: wrap;
+}
+
+.scan-crop-status {
+  justify-content: flex-end;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.orientation-selector label {
+  min-height: 38px;
+}
+
+.orientation-selector .secondary-button {
+  margin-left: auto;
+}
+
+.scan-board-frame {
+  width: min(100%, 620px);
+  margin-inline: auto;
+  padding: 4px;
+  aspect-ratio: 1 / 1;
+  border-radius: 9px;
+  background: #0a0e12;
+}
+
+.scan-board-grid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  grid-template-rows: repeat(8, minmax(0, 1fr));
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 6px;
+  container-type: inline-size;
+}
+
+.scan-board-grid .piece {
+  font-size: 10.5cqi;
+}
+
+.scan-fen-settings {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.scan-fen-settings input {
+  width: 100%;
+  min-width: 0;
+}
+
+.scan-castling-options label {
+  min-height: 30px;
+}
+
+.scan-fen-row > input {
+  min-width: min(100%, 280px);
+  max-width: 100%;
+  flex: 1 1 320px;
+}
+
+.scan-action-row > button {
+  min-width: min(100%, 128px);
+  flex: 1 1 140px !important;
 }
 
 .board-column {
@@ -1203,6 +1359,17 @@ input[type="range"] {
   }
 }
 
+@media (max-width: 1100px) {
+  .scan-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .scan-side-column {
+    max-height: none;
+    overflow: visible;
+  }
+}
+
 @media (max-width: 620px) {
   .topbar {
     padding: 10px 11px;
@@ -1215,6 +1382,10 @@ input[type="range"] {
   }
 
   .brand small {
+    display: none;
+  }
+
+  .version-label {
     display: none;
   }
 
@@ -1284,6 +1455,37 @@ input[type="range"] {
   .panel {
     padding: 14px;
     border-radius: 13px;
+  }
+
+  .scan-input-panel {
+    min-height: 0;
+  }
+
+  .scan-crop-toolbar {
+    flex-direction: column;
+  }
+
+  .scan-crop-actions,
+  .scan-crop-status {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .scan-crop-actions > button {
+    flex: 1 1 130px;
+  }
+
+  .orientation-selector .secondary-button {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .scan-fen-settings {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .scan-fen-row > button {
+    flex: 1 1 92px;
   }
 
   .engine-controls,
@@ -1370,6 +1572,46 @@ input[type="range"] {
 }
 
 /* ─── Scan Panel Additions ──────────────────────────────────── */
+
+.offline-model-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 14px;
+  align-items: center;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-2);
+}
+
+.offline-model-control > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.offline-model-control span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.offline-model-control progress,
+.offline-model-control > .state-error {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+@media (max-width: 620px) {
+  .offline-model-control {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .offline-model-control button {
+    width: 100%;
+  }
+}
 
 .experimental-badge {
   background: rgba(230, 168, 23, 0.12);

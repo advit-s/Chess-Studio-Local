@@ -71,27 +71,27 @@ describe('fenValidation — validatePosition', () => {
     expect(result.errors.some((e) => e.includes('black pawns'))).toBe(true);
   });
 
-  it('rejects pawns on rank 1 (indices 56-63)', () => {
+  it('warns about pawns on rank 1 without blocking composed positions', () => {
     const grid = makeGrid({ 4: 'bk', 60: 'wk', 57: 'wp' });
     const result = validatePosition(grid);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes('rank 1'))).toBe(true);
+    expect(result.valid).toBe(true);
+    expect(result.warnings.some((warning) => warning.includes('rank 1'))).toBe(true);
   });
 
-  it('rejects pawns on rank 8 (indices 0-7)', () => {
+  it('warns about pawns on rank 8 without blocking composed positions', () => {
     const grid = makeGrid({ 4: 'bk', 60: 'wk', 1: 'bp' });
     const result = validatePosition(grid);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes('rank 8'))).toBe(true);
+    expect(result.valid).toBe(true);
+    expect(result.warnings.some((warning) => warning.includes('rank 8'))).toBe(true);
   });
 
-  it('rejects more than 16 white pieces', () => {
+  it('warns rather than rejects unusual composed material', () => {
     const grid = makeGrid({ 4: 'bk', 60: 'wk' });
     // Fill lots of white pieces
     for (let i = 16; i < 32; i++) grid[i] = 'wr'; // 16 rooks + 1 king = 17
     const result = validatePosition(grid);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes('Too many white pieces'))).toBe(true);
+    expect(result.valid).toBe(true);
+    expect(result.warnings.some((warning) => warning.includes('17 white pieces'))).toBe(true);
   });
 
   it('warns about multiple queens (unusual but legal)', () => {

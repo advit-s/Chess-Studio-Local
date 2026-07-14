@@ -65,8 +65,8 @@ describe('immutable game document', () => {
     expect(replayGame(promotion).get('a8')).toMatchObject({ type: 'q', color: 'w' });
   });
 
-  it('imports headers, comments, variations, and custom starting FENs', () => {
-    const pgnText = '[Event "Regression"]\n[Result "1-0"]\n\n1. e4 {main move} e5 (1... c5) 2. Nf3 Nc6 1-0';
+  it('imports headers, comments, NAGs, variations, and custom starting FENs', () => {
+    const pgnText = '[Event "Regression"]\n[Result "1-0"]\n\n1. e4 $1 {main move} e5 (1... c5 $2) 2. Nf3 Nc6 1-0';
     const withVariation = documentFromPgn(pgnText);
     expect(withVariation.headers.Event).toBe('Regression');
     expect(replayGame(withVariation).history()).toEqual(['e4', 'e5', 'Nf3', 'Nc6']);
@@ -75,16 +75,21 @@ describe('immutable game document', () => {
     const exportedPgn = exportPgn(withVariation);
     expect(exportedPgn).toBe(pgnText);
 
-    // Test that when modified, comments on mainline moves are still preserved
+    // A legal mainline extension must retain the imported rich notation. The
+    // previous regression used an illegal black move here, so no edit happened.
     const modified = gameReducer(withVariation, {
       type: 'move',
-      move: { from: 'c7', to: 'c6' },
+      move: { from: 'f1', to: 'b5' },
       expectedFen: replayGame(withVariation).fen(),
     });
+    expect(modified.moves).toHaveLength(withVariation.moves.length + 1);
     const modifiedExported = exportPgn(modified);
     expect(modifiedExported).toContain('{main move}');
-    expect(modifiedExported).toContain('c6');
+    expect(modifiedExported).toContain('$1');
+    expect(modifiedExported).toContain('(1... c5 $2)');
+    expect(modifiedExported).toContain('Bb5');
     expect(modifiedExported).toContain('[Result "1-0"]');
+    expect(modifiedExported.trim().endsWith('1-0')).toBe(true);
 
     const custom = documentFromPgn(
       '[SetUp "1"]\n[FEN "4k3/8/8/8/8/8/4P3/4K3 w - - 0 1"]\n\n1. e4 *',
@@ -93,6 +98,23 @@ describe('immutable game document', () => {
     expect(exported).toContain('[SetUp "1"]');
     expect(exported).toContain('[FEN "4k3/8/8/8/8/8/4P3/4K3 w - - 0 1"]');
     expect(replayGame(documentFromPgn(exported)).fen()).toBe(replayGame(custom).fen());
+  });
+
+  it('preserves annotations on the retained prefix when branching an imported PGN', () => {
+    const imported = documentFromPgn(
+      '[Event "Branch"]\n[Result "*"]\n\n1. e4 $1 {central} e5 (1... c5 $2) 2. Nf3 Nc6 3. Bb5 a6 *',
+    );
+    const shortened = gameReducer(imported, { type: 'undo', count: 2 });
+    const branched = move(shortened, 'd2', 'd4');
+    const exported = exportPgn(branched);
+
+    expect(exported).toContain('[Event "Branch"]');
+    expect(exported).toContain('e4 $1 {central}');
+    expect(exported).toContain('(1... c5 $2)');
+    expect(exported).toContain('d4');
+    expect(exported).not.toContain('Bb5');
+    expect(exported).not.toContain('a6');
+    expect(replayGame(documentFromPgn(exported)).fen()).toBe(replayGame(branched).fen());
   });
 
   it('rejects invalid FEN and PGN input', () => {

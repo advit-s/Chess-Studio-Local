@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { PNG } from 'pngjs';
 import {
   toGrayscale,
   gaussianBlur3x3,
@@ -7,6 +9,7 @@ import {
   centeredSquareCrop,
   warpPerspective,
   extractSquares,
+  detectBoard,
 } from './boardDetection';
 
 // Helper: create a synthetic RGBA image
@@ -118,6 +121,97 @@ describe('boardDetection — findBestGrid', () => {
   });
 });
 
+describe('boardDetection — labeled independent screenshot', () => {
+  it('selects the actual board instead of a board-plus-side-panel grid', () => {
+    const png = PNG.sync.read(readFileSync('tests/ocr-benchmark/images/example_input.png'));
+    const result = detectBoard(new Uint8ClampedArray(png.data), png.width, png.height);
+    expect(result.found).toBe(true);
+    const detected = {
+      x: result.corners.topLeft.x,
+      y: result.corners.topLeft.y,
+      width: result.corners.topRight.x - result.corners.topLeft.x,
+      height: result.corners.bottomLeft.y - result.corners.topLeft.y,
+    };
+    const expected = { x: 73, y: 40, width: 909, height: 909 };
+    const intersectionWidth = Math.max(0, Math.min(detected.x + detected.width, expected.x + expected.width) - Math.max(detected.x, expected.x));
+    const intersectionHeight = Math.max(0, Math.min(detected.y + detected.height, expected.y + expected.height) - Math.max(detected.y, expected.y));
+    const intersection = intersectionWidth * intersectionHeight;
+    const union = detected.width * detected.height + expected.width * expected.height - intersection;
+    expect(intersection / union).toBeGreaterThan(0.9);
+  });
+
+  const polygonArea = (points: Array<{ x: number; y: number }>) => Math.abs(points.reduce((sum, point, index) => {
+    const next = points[(index + 1) % points.length];
+    return sum + point.x * next.y - next.x * point.y;
+  }, 0) / 2);
+
+  const polygonIoU = (first: CornersLike, second: CornersLike) => {
+    // The fixtures use modest convex distortions. Rasterize at source scale to
+    // keep the test independent of the benchmark metric implementation.
+    const firstPolygon = [first.topLeft, first.topRight, first.bottomRight, first.bottomLeft];
+    const secondPolygon = [second.topLeft, second.topRight, second.bottomRight, second.bottomLeft];
+    const width = Math.ceil(Math.max(...firstPolygon.concat(secondPolygon).map((point) => point.x))) + 1;
+    const height = Math.ceil(Math.max(...firstPolygon.concat(secondPolygon).map((point) => point.y))) + 1;
+    const inside = (point: { x: number; y: number }, polygon: Array<{ x: number; y: number }>) => {
+      let sign = 0;
+      for (let index = 0; index < polygon.length; index++) {
+        const a = polygon[index];
+        const b = polygon[(index + 1) % polygon.length];
+        const cross = (b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x);
+        if (Math.abs(cross) < 1e-6) continue;
+        const current = Math.sign(cross);
+        if (sign && current !== sign) return false;
+        sign = current;
+      }
+      return true;
+    };
+    let intersection = 0;
+    let union = 0;
+    for (let y = 0; y < height; y += 2) {
+      for (let x = 0; x < width; x += 2) {
+        const inFirst = inside({ x, y }, firstPolygon);
+        const inSecond = inside({ x, y }, secondPolygon);
+        if (inFirst || inSecond) union++;
+        if (inFirst && inSecond) intersection++;
+      }
+    }
+    expect(polygonArea(firstPolygon)).toBeGreaterThan(1);
+    return intersection / union;
+  };
+
+  interface CornersLike {
+    topLeft: { x: number; y: number };
+    topRight: { x: number; y: number };
+    bottomRight: { x: number; y: number };
+    bottomLeft: { x: number; y: number };
+  }
+
+  it('returns a tilted quadrilateral for the labeled 1.5 degree rotation', () => {
+    const png = PNG.sync.read(readFileSync('tests/ocr-benchmark/images/augmented-rotate-1_5.png'));
+    const result = detectBoard(new Uint8ClampedArray(png.data), png.width, png.height);
+    const expected: CornersLike = {
+      topLeft: { x: 100.5842, y: 41.6893 }, topRight: { x: 1010.2724, y: 65.5103 },
+      bottomRight: { x: 986.4514, y: 975.1985 }, bottomLeft: { x: 76.7632, y: 951.3774 },
+    };
+    expect(result.found).toBe(true);
+    expect(result.corners.topRight.y - result.corners.topLeft.y).toBeGreaterThan(10);
+    expect(polygonIoU(result.corners, expected)).toBeGreaterThan(0.9);
+  });
+
+  it('returns four perspective-aware corners for the labeled trapezoid', () => {
+    const png = PNG.sync.read(readFileSync('tests/ocr-benchmark/images/augmented-perspective.png'));
+    const result = detectBoard(new Uint8ClampedArray(png.data), png.width, png.height);
+    const expected: CornersLike = {
+      topLeft: { x: 91.6893, y: 52.3542 }, topRight: { x: 964.9369, y: 38.6475 },
+      bottomRight: { x: 993.8356, y: 942.4278 }, bottomLeft: { x: 73.9961, y: 926.3087 },
+    };
+    expect(result.found).toBe(true);
+    expect(result.corners.topRight.y - result.corners.topLeft.y).toBeLessThan(-5);
+    expect(result.corners.bottomRight.y - result.corners.bottomLeft.y).toBeGreaterThan(5);
+    expect(polygonIoU(result.corners, expected)).toBeGreaterThan(0.88);
+  });
+});
+
 describe('boardDetection — centeredSquareCrop', () => {
   it('returns centered square for landscape image', () => {
     const corners = centeredSquareCrop(800, 600);
@@ -157,6 +251,74 @@ describe('boardDetection — warpPerspective', () => {
     expect(result[1]).toBe(64);
     expect(result[2]).toBe(32);
     expect(result[3]).toBe(255);
+  });
+
+  it('uses a projective homography for a trapezoid', () => {
+    const w = 64;
+    const h = 64;
+    const rgba = new Uint8ClampedArray(w * h * 4);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const index = (y * w + x) * 4;
+        rgba[index] = y * 4;
+        rgba[index + 1] = x * 4;
+        rgba[index + 2] = 0;
+        rgba[index + 3] = 255;
+      }
+    }
+
+    const result = warpPerspective(rgba, w, h, {
+      topLeft: { x: 10, y: 10 },
+      topRight: { x: 50, y: 10 },
+      bottomLeft: { x: 20, y: 50 },
+      bottomRight: { x: 40, y: 50 },
+    }, 5);
+
+    // The inverse homography maps destination centre (0.5, 0.5) to
+    // source (30, 36 2/3). Bilinear quad interpolation incorrectly maps y=30.
+    const centre = (2 * 5 + 2) * 4;
+    expect(result[centre]).toBeCloseTo(147, -0);
+    expect(result[centre + 1]).toBeCloseTo(120, -0);
+  });
+
+  it('bilinearly samples source pixels instead of rounding to nearest', () => {
+    const w = 4;
+    const h = 4;
+    const rgba = new Uint8ClampedArray(w * h * 4);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const index = (y * w + x) * 4;
+        rgba[index] = x * 50;
+        rgba[index + 1] = y * 50;
+        rgba[index + 3] = 255;
+      }
+    }
+    const result = warpPerspective(rgba, w, h, {
+      topLeft: { x: 0, y: 0 },
+      topRight: { x: 3, y: 0 },
+      bottomLeft: { x: 0, y: 3 },
+      bottomRight: { x: 3, y: 3 },
+    }, 3);
+    const centre = (1 * 3 + 1) * 4;
+    expect(result[centre]).toBe(75);
+    expect(result[centre + 1]).toBe(75);
+  });
+
+  it('rejects degenerate and crossed quadrilaterals', () => {
+    const rgba = makeRGBA(16, 16, [0, 0, 0, 255]);
+    expect(() => warpPerspective(rgba, 16, 16, {
+      topLeft: { x: 2, y: 2 },
+      topRight: { x: 6, y: 6 },
+      bottomLeft: { x: 10, y: 10 },
+      bottomRight: { x: 14, y: 14 },
+    }, 8)).toThrow(/quadrilateral|degenerate/i);
+
+    expect(() => warpPerspective(rgba, 16, 16, {
+      topLeft: { x: 2, y: 2 },
+      topRight: { x: 13, y: 13 },
+      bottomLeft: { x: 2, y: 13 },
+      bottomRight: { x: 13, y: 2 },
+    }, 8)).toThrow(/quadrilateral|crossed/i);
   });
 });
 

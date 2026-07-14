@@ -74,7 +74,6 @@ export function gameReducer(state: GameDocument, action: GameAction): GameDocume
       moves: state.moves.slice(0, split),
       future: [...removed, ...state.future],
       cursor: split,
-      originalPgn: undefined,
     };
   }
   if (action.type === 'redo') {
@@ -86,7 +85,6 @@ export function gameReducer(state: GameDocument, action: GameAction): GameDocume
       moves: [...state.moves, ...restored],
       future: state.future.slice(count),
       cursor: state.moves.length + restored.length,
-      originalPgn: undefined,
     };
   }
 
@@ -97,7 +95,7 @@ export function gameReducer(state: GameDocument, action: GameAction): GameDocume
     const applied = chess.move(action.move);
     if (!applied) return state;
     const moves = [...state.moves, normalizedMove(applied)];
-    return { ...state, moves, future: [], cursor: moves.length, originalPgn: undefined };
+    return { ...state, moves, future: [], cursor: moves.length };
   } catch {
     return state;
   }
@@ -141,9 +139,196 @@ export function documentFromPgn(input: string): GameDocument {
   };
 }
 
+const PGN_RESULTS = new Set(['1-0', '0-1', '1/2-1/2', '*']);
+
+interface PgnMainlineLayout {
+  movetextStart: number;
+  segmentStarts: number[];
+  resultStart: number | null;
+  result: string | null;
+}
+
+function pgnMovetextStart(pgn: string): number {
+  let cursor = 0;
+  let sawHeader = false;
+  while (cursor < pgn.length) {
+    const newline = pgn.indexOf('\n', cursor);
+    const end = newline === -1 ? pgn.length : newline + 1;
+    const line = pgn.slice(cursor, newline === -1 ? pgn.length : newline).trim();
+    if (line.startsWith('[') && line.endsWith(']')) {
+      sawHeader = true;
+      cursor = end;
+      continue;
+    }
+    if (line === '' && (sawHeader || cursor === 0)) {
+      cursor = end;
+      continue;
+    }
+    break;
+  }
+  return cursor;
+}
+
+function skipBraceComment(text: string, start: number): number {
+  const end = text.indexOf('}', start + 1);
+  return end === -1 ? text.length : end + 1;
+}
+
+function skipLineComment(text: string, start: number): number {
+  const end = text.indexOf('\n', start + 1);
+  return end === -1 ? text.length : end + 1;
+}
+
+function skipVariation(text: string, start: number): number {
+  let depth = 0;
+  let index = start;
+  while (index < text.length) {
+    const character = text[index];
+    if (character === '{') {
+      index = skipBraceComment(text, index);
+      continue;
+    }
+    if (character === ';') {
+      index = skipLineComment(text, index);
+      continue;
+    }
+    if (character === '(') depth += 1;
+    if (character === ')') {
+      depth -= 1;
+      if (depth === 0) return index + 1;
+    }
+    index += 1;
+  }
+  return text.length;
+}
+
+/**
+ * Locate top-level mainline move segments without interpreting or rewriting
+ * comments, NAGs or recursive annotation variations. Segment boundaries let
+ * export retain rich notation attached to every unchanged mainline move.
+ */
+function scanPgnMainlineLayout(pgn: string): PgnMainlineLayout {
+  const movetextStart = pgnMovetextStart(pgn);
+  const text = pgn.slice(movetextStart);
+  const segmentStarts: number[] = [];
+  let pendingMoveNumberStart: number | null = null;
+  let resultStart: number | null = null;
+  let result: string | null = null;
+  let index = 0;
+
+  while (index < text.length) {
+    if (/\s/.test(text[index])) {
+      index += 1;
+      continue;
+    }
+    if (text[index] === '{') {
+      index = skipBraceComment(text, index);
+      continue;
+    }
+    if (text[index] === ';') {
+      index = skipLineComment(text, index);
+      continue;
+    }
+    if (text[index] === '(') {
+      index = skipVariation(text, index);
+      continue;
+    }
+    if (text[index] === '$') {
+      const nag = text.slice(index).match(/^\$\d+/)?.[0];
+      index += nag?.length ?? 1;
+      continue;
+    }
+
+    const resultToken = text.slice(index).match(/^(?:1-0|0-1|1\/2-1\/2|\*)/)?.[0];
+    if (resultToken) {
+      resultStart = index;
+      result = resultToken;
+      break;
+    }
+
+    const moveNumber = text.slice(index).match(/^\d+\.(?:\.\.)?/)?.[0];
+    if (moveNumber) {
+      pendingMoveNumberStart = index;
+      index += moveNumber.length;
+      continue;
+    }
+
+    const tokenStart = index;
+    while (index < text.length && !/[\s(){};]/.test(text[index])) index += 1;
+    const token = text.slice(tokenStart, index);
+    if (!token || /^[!?]+$/.test(token)) continue;
+    segmentStarts.push(pendingMoveNumberStart ?? tokenStart);
+    pendingMoveNumberStart = null;
+  }
+
+  return {
+    movetextStart,
+    segmentStarts,
+    resultStart,
+    result,
+  };
+}
+
+function movesEqual(left: StoredMove, right: StoredMove): boolean {
+  return left.from === right.from
+    && left.to === right.to
+    && (left.promotion ?? '') === (right.promotion ?? '');
+}
+
+function originalMainlineMoves(pgn: string): StoredMove[] {
+  const chess = new Chess();
+  chess.loadPgn(pgn, { strict: false });
+  return chess.history({ verbose: true }).map(normalizedMove);
+}
+
+function formatMainlineSuffix(document: GameDocument, startPly: number): string {
+  const chess = new Chess(document.rootFen);
+  for (const move of document.moves.slice(0, startPly)) chess.move(move);
+
+  const tokens: string[] = [];
+  for (const move of document.moves.slice(startPly)) {
+    const before = chess.fen().split(/\s+/);
+    const turn = before[1];
+    const fullmove = Number(before[5]);
+    const applied = chess.move(move);
+    if (!applied) throw new Error('Cannot export an illegal move in the game document.');
+    tokens.push(`${fullmove}${turn === 'w' ? '.' : '...'} ${applied.san}`);
+  }
+  return tokens.join(' ');
+}
+
+function exportAnnotatedPgn(document: GameDocument, originalPgn: string): string {
+  const originalMoves = originalMainlineMoves(originalPgn);
+  let commonPly = 0;
+  while (
+    commonPly < originalMoves.length
+    && commonPly < document.moves.length
+    && movesEqual(originalMoves[commonPly], document.moves[commonPly])
+  ) {
+    commonPly += 1;
+  }
+
+  if (commonPly === originalMoves.length && commonPly === document.moves.length) {
+    return originalPgn;
+  }
+
+  const layout = scanPgnMainlineLayout(originalPgn);
+  const movetext = originalPgn.slice(layout.movetextStart);
+  const cut = commonPly < layout.segmentStarts.length
+    ? layout.segmentStarts[commonPly]
+    : layout.resultStart ?? movetext.length;
+  const preservedMovetext = movetext.slice(0, cut).trim();
+  const suffix = formatMainlineSuffix(document, commonPly);
+  const declaredResult = document.headers.Result || layout.result || '*';
+  const result = PGN_RESULTS.has(declaredResult) ? declaredResult : '*';
+  const body = [preservedMovetext, suffix, result].filter(Boolean).join(' ');
+  const headers = originalPgn.slice(0, layout.movetextStart).trimEnd();
+  return headers ? `${headers}\n\n${body}` : body;
+}
+
 export function exportPgn(document: GameDocument): string {
   if (document.originalPgn !== undefined) {
-    return document.originalPgn;
+    return exportAnnotatedPgn(document, document.originalPgn);
   }
   const chess = new Chess(document.rootFen);
   for (const [name, value] of Object.entries(document.headers)) {

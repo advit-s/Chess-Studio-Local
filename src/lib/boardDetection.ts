@@ -33,6 +33,22 @@ export interface BoardDetectionResult {
   found: boolean;
   corners: Corners;
   quality: 'good' | 'fair' | 'manual';
+  score?: number;
+  candidates?: BoardCandidate[];
+  signals?: BoardCandidate['signals'];
+}
+
+export interface BoardCandidate {
+  corners: Corners;
+  score: number;
+  signals: {
+    horizontalGrid: number;
+    verticalGrid: number;
+    alternatingSquares: number;
+    squareAspect: number;
+    edgeRefinement?: number;
+    gridAlignment?: number;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -227,6 +243,399 @@ export function findBestGrid(
   return { start: bestStart, end: bestEnd, score: bestScore };
 }
 
+interface GridCandidate {
+  start: number;
+  end: number;
+  span: number;
+  score: number;
+}
+
+function findGridCandidates(lines: number[], imageExtent: number): GridCandidate[] {
+  const candidates: GridCandidate[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    for (let j = i + 1; j < lines.length; j++) {
+      const start = lines[i];
+      const end = lines[j];
+      const span = end - start;
+      if (span < imageExtent * 0.3) continue;
+      const idealStep = span / 8;
+      let matchCount = 0;
+      let totalDeviation = 0;
+      for (let k = 1; k <= 7; k++) {
+        const expected = start + k * idealStep;
+        let minDistance = Infinity;
+        for (const line of lines) minDistance = Math.min(minDistance, Math.abs(line - expected));
+        if (minDistance < idealStep * 0.3) {
+          matchCount += 1;
+          totalDeviation += minDistance / idealStep;
+        }
+      }
+      if (matchCount >= 3) {
+        candidates.push({
+          start,
+          end,
+          span,
+          score: matchCount / 7 - (totalDeviation / matchCount) * 0.1,
+        });
+      }
+    }
+  }
+  return candidates.sort((left, right) => right.score - left.score).slice(0, 24);
+}
+
+function alternatingSquareSignal(
+  gray: Uint8Array,
+  width: number,
+  height: number,
+  left: number,
+  right: number,
+  top: number,
+  bottom: number,
+): number {
+  const parityValues: [number[], number[]] = [[], []];
+  const squareWidth = (right - left) / 8;
+  const squareHeight = (bottom - top) / 8;
+  const radius = Math.max(1, Math.floor(Math.min(squareWidth, squareHeight) * 0.045));
+
+  for (let row = 0; row < 8; row++) {
+    for (let column = 0; column < 8; column++) {
+      const patchMeans: number[] = [];
+      for (const offsetY of [0.16, 0.84]) {
+        for (const offsetX of [0.16, 0.84]) {
+          const centerX = left + (column + offsetX) * squareWidth;
+          const centerY = top + (row + offsetY) * squareHeight;
+          let sum = 0;
+          let count = 0;
+          for (let y = Math.max(0, Math.floor(centerY - radius)); y <= Math.min(height - 1, Math.ceil(centerY + radius)); y++) {
+            for (let x = Math.max(0, Math.floor(centerX - radius)); x <= Math.min(width - 1, Math.ceil(centerX + radius)); x++) {
+              sum += gray[y * width + x];
+              count += 1;
+            }
+          }
+          patchMeans.push(count ? sum / count : 0);
+        }
+      }
+      patchMeans.sort((a, b) => a - b);
+      parityValues[(row + column) % 2].push((patchMeans[1] + patchMeans[2]) / 2);
+    }
+  }
+
+  const means = parityValues.map((values) => values.reduce((sum, value) => sum + value, 0) / values.length);
+  const deviations = parityValues.map((values, parity) => Math.sqrt(
+    values.reduce((sum, value) => sum + (value - means[parity]) ** 2, 0) / values.length,
+  ));
+  const rawSignal = Math.abs(means[0] - means[1]) / (1 + (deviations[0] + deviations[1]) / 2);
+  return Math.max(0, Math.min(1, rawSignal / 2.5));
+}
+
+interface FittedBoundary {
+  slope: number;
+  intercept: number;
+  support: number;
+}
+
+function median(values: number[]): number {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function fitBoundary(points: Array<{ independent: number; dependent: number; score: number }>): FittedBoundary | null {
+  if (points.length < 8) return null;
+  let bestInliers: typeof points = [];
+  let bestWeight = -1;
+
+  // Robustly fit a line through the strongest boundary samples. Candidate
+  // slopes are deliberately bounded: the automatic detector targets modest
+  // screenshot rotation/perspective, while arbitrary photographs stay manual.
+  for (let first = 0; first < points.length; first += 2) {
+    for (let second = first + 4; second < points.length; second += 2) {
+      const delta = points[second].independent - points[first].independent;
+      if (Math.abs(delta) < 1) continue;
+      const slope = (points[second].dependent - points[first].dependent) / delta;
+      if (Math.abs(slope) > 0.18) continue;
+      const intercept = points[first].dependent - slope * points[first].independent;
+      const inliers = points.filter((point) => Math.abs(point.dependent - (slope * point.independent + intercept)) <= 2.25);
+      const weight = inliers.reduce((sum, point) => sum + Math.max(1, point.score), 0);
+      if (weight > bestWeight) {
+        bestWeight = weight;
+        bestInliers = inliers;
+      }
+    }
+  }
+  if (bestInliers.length < Math.max(8, points.length * 0.2)) return null;
+
+  const scoreMedian = median(bestInliers.map((point) => point.score));
+  const weighted = bestInliers.filter((point) => point.score >= scoreMedian * 0.35);
+  let totalWeight = 0;
+  let meanIndependent = 0;
+  let meanDependent = 0;
+  for (const point of weighted) {
+    const weight = Math.max(1, point.score);
+    totalWeight += weight;
+    meanIndependent += point.independent * weight;
+    meanDependent += point.dependent * weight;
+  }
+  if (!totalWeight) return null;
+  meanIndependent /= totalWeight;
+  meanDependent /= totalWeight;
+  let covariance = 0;
+  let variance = 0;
+  for (const point of weighted) {
+    const weight = Math.max(1, point.score);
+    covariance += weight * (point.independent - meanIndependent) * (point.dependent - meanDependent);
+    variance += weight * (point.independent - meanIndependent) ** 2;
+  }
+  if (variance < 1e-6) return null;
+  const slope = covariance / variance;
+  if (!Number.isFinite(slope) || Math.abs(slope) > 0.18) return null;
+  return {
+    slope,
+    intercept: meanDependent - slope * meanIndependent,
+    support: bestInliers.length / points.length,
+  };
+}
+
+function horizontalBoundarySamples(
+  gray: Uint8Array,
+  width: number,
+  height: number,
+  left: number,
+  right: number,
+  centerY: number,
+  radius: number,
+): Array<{ independent: number; dependent: number; score: number }> {
+  const samples: Array<{ independent: number; dependent: number; score: number }> = [];
+  const startX = Math.max(3, Math.ceil(left + (right - left) * 0.03));
+  const endX = Math.min(width - 4, Math.floor(right - (right - left) * 0.03));
+  const step = Math.max(3, Math.floor((endX - startX) / 44));
+  for (let x = startX; x <= endX; x += step) {
+    let bestY = -1;
+    let bestScore = -1;
+    const minY = Math.max(3, Math.floor(centerY - radius));
+    const maxY = Math.min(height - 4, Math.ceil(centerY + radius));
+    for (let y = minY; y <= maxY; y++) {
+      let score = 0;
+      for (let offset = -2; offset <= 2; offset++) {
+        score += Math.abs(gray[(y + 2) * width + x + offset] - gray[(y - 2) * width + x + offset]);
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        bestY = y;
+      }
+    }
+    if (bestY >= 0) samples.push({ independent: x, dependent: bestY, score: bestScore });
+  }
+  return samples;
+}
+
+function verticalBoundarySamples(
+  gray: Uint8Array,
+  width: number,
+  height: number,
+  top: number,
+  bottom: number,
+  centerX: number,
+  radius: number,
+): Array<{ independent: number; dependent: number; score: number }> {
+  const samples: Array<{ independent: number; dependent: number; score: number }> = [];
+  const startY = Math.max(3, Math.ceil(top + (bottom - top) * 0.03));
+  const endY = Math.min(height - 4, Math.floor(bottom - (bottom - top) * 0.03));
+  const step = Math.max(3, Math.floor((endY - startY) / 44));
+  for (let y = startY; y <= endY; y += step) {
+    let bestX = -1;
+    let bestScore = -1;
+    const minX = Math.max(3, Math.floor(centerX - radius));
+    const maxX = Math.min(width - 4, Math.ceil(centerX + radius));
+    for (let x = minX; x <= maxX; x++) {
+      let score = 0;
+      for (let offset = -2; offset <= 2; offset++) {
+        score += Math.abs(gray[(y + offset) * width + x + 2] - gray[(y + offset) * width + x - 2]);
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        bestX = x;
+      }
+    }
+    if (bestX >= 0) samples.push({ independent: y, dependent: bestX, score: bestScore });
+  }
+  return samples;
+}
+
+function intersectBoundaries(horizontal: FittedBoundary, vertical: FittedBoundary): Point | null {
+  // horizontal: y = h.slope*x + h.intercept
+  // vertical:   x = v.slope*y + v.intercept
+  const denominator = 1 - horizontal.slope * vertical.slope;
+  if (Math.abs(denominator) < 0.5) return null;
+  const y = (horizontal.slope * vertical.intercept + horizontal.intercept) / denominator;
+  const x = vertical.slope * y + vertical.intercept;
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+}
+
+function refineCandidateCorners(
+  gray: Uint8Array,
+  width: number,
+  height: number,
+  horizontal: GridCandidate,
+  vertical: GridCandidate,
+): { corners: Corners; support: number } | null {
+  const span = Math.min(horizontal.span, vertical.span);
+  const radius = Math.max(4, span * 0.075);
+  const top = fitBoundary(horizontalBoundarySamples(
+    gray, width, height, vertical.start, vertical.start + span, horizontal.start, radius,
+  ));
+  const bottom = fitBoundary(horizontalBoundarySamples(
+    gray, width, height, vertical.start, vertical.start + span, horizontal.start + span, radius,
+  ));
+  const left = fitBoundary(verticalBoundarySamples(
+    gray, width, height, horizontal.start, horizontal.start + span, vertical.start, radius,
+  ));
+  const right = fitBoundary(verticalBoundarySamples(
+    gray, width, height, horizontal.start, horizontal.start + span, vertical.start + span, radius,
+  ));
+  if (!top || !bottom || !left || !right) return null;
+  const topLeft = intersectBoundaries(top, left);
+  const topRight = intersectBoundaries(top, right);
+  const bottomLeft = intersectBoundaries(bottom, left);
+  const bottomRight = intersectBoundaries(bottom, right);
+  if (!topLeft || !topRight || !bottomLeft || !bottomRight) return null;
+  const corners = { topLeft, topRight, bottomLeft, bottomRight };
+  try {
+    validateCorners(corners);
+  } catch {
+    return null;
+  }
+  const margin = span * 0.15;
+  if (Object.values(corners).some((point) => (
+    point.x < -margin || point.x > width - 1 + margin || point.y < -margin || point.y > height - 1 + margin
+  ))) return null;
+  return {
+    corners,
+    support: (top.support + bottom.support + left.support + right.support) / 4,
+  };
+}
+
+function sampleGray(gray: Uint8Array, width: number, height: number, point: Point): number {
+  const x = Math.max(0, Math.min(width - 1, Math.round(point.x)));
+  const y = Math.max(0, Math.min(height - 1, Math.round(point.y)));
+  return gray[y * width + x];
+}
+
+/** Score whether all seven internal rank/file boundaries land on colour changes. */
+function quadrilateralGridAlignmentScore(
+  gray: Uint8Array,
+  width: number,
+  height: number,
+  corners: Corners,
+): number {
+  let homography: number[];
+  try {
+    homography = destinationToSourceHomography(corners);
+  } catch {
+    return -Infinity;
+  }
+  const epsilon = 0.009;
+  const boundaryScores: number[] = [];
+  for (let boundary = 1; boundary <= 7; boundary++) {
+    const u = boundary / 8;
+    const differences: number[] = [];
+    for (let row = 0; row < 8; row++) {
+      for (const offset of [0.14, 0.86]) {
+        const v = (row + offset) / 8;
+        differences.push(Math.abs(
+          sampleGray(gray, width, height, projectPoint(homography, u - epsilon, v))
+          - sampleGray(gray, width, height, projectPoint(homography, u + epsilon, v)),
+        ));
+      }
+    }
+    boundaryScores.push(median(differences));
+  }
+  for (let boundary = 1; boundary <= 7; boundary++) {
+    const v = boundary / 8;
+    const differences: number[] = [];
+    for (let column = 0; column < 8; column++) {
+      for (const offset of [0.14, 0.86]) {
+        const u = (column + offset) / 8;
+        differences.push(Math.abs(
+          sampleGray(gray, width, height, projectPoint(homography, u, v - epsilon))
+          - sampleGray(gray, width, height, projectPoint(homography, u, v + epsilon)),
+        ));
+      }
+    }
+    boundaryScores.push(median(differences));
+  }
+
+  const parity: [number[], number[]] = [[], []];
+  for (let row = 0; row < 8; row++) {
+    for (let column = 0; column < 8; column++) {
+      const samples = [
+        projectPoint(homography, (column + 0.18) / 8, (row + 0.18) / 8),
+        projectPoint(homography, (column + 0.82) / 8, (row + 0.18) / 8),
+        projectPoint(homography, (column + 0.18) / 8, (row + 0.82) / 8),
+        projectPoint(homography, (column + 0.82) / 8, (row + 0.82) / 8),
+      ].map((point) => sampleGray(gray, width, height, point)).sort((left, right) => left - right);
+      parity[(row + column) % 2].push((samples[1] + samples[2]) / 2);
+    }
+  }
+  const parityMeans = parity.map((values) => values.reduce((sum, value) => sum + value, 0) / values.length);
+  const boundaryMean = boundaryScores.reduce((sum, value) => sum + value, 0) / boundaryScores.length;
+  return boundaryMean + Math.abs(parityMeans[0] - parityMeans[1]) * 0.25;
+}
+
+function moveEdge(corners: Corners, edge: 'left' | 'right' | 'top' | 'bottom', delta: number): Corners {
+  const next: Corners = {
+    topLeft: { ...corners.topLeft }, topRight: { ...corners.topRight },
+    bottomLeft: { ...corners.bottomLeft }, bottomRight: { ...corners.bottomRight },
+  };
+  if (edge === 'left') {
+    next.topLeft.x += delta;
+    next.bottomLeft.x += delta;
+  } else if (edge === 'right') {
+    next.topRight.x += delta;
+    next.bottomRight.x += delta;
+  } else if (edge === 'top') {
+    next.topLeft.y += delta;
+    next.topRight.y += delta;
+  } else {
+    next.bottomLeft.y += delta;
+    next.bottomRight.y += delta;
+  }
+  return next;
+}
+
+function optimizeGridAlignment(
+  gray: Uint8Array,
+  width: number,
+  height: number,
+  seed: Corners,
+  approximateSpan: number,
+): { corners: Corners; score: number } {
+  let bestCorners = seed;
+  let bestScore = quadrilateralGridAlignmentScore(gray, width, height, seed);
+  const firstStep = Math.max(2, Math.round(approximateSpan * 0.022));
+  const steps = [firstStep, Math.max(2, Math.round(firstStep / 2)), 1];
+  for (const step of [...new Set(steps)]) {
+    let improved = true;
+    let passes = 0;
+    while (improved && passes++ < 3) {
+      improved = false;
+      for (const edge of ['left', 'right', 'top', 'bottom'] as const) {
+        for (const delta of [-step, step]) {
+          const candidate = moveEdge(bestCorners, edge, delta);
+          const score = quadrilateralGridAlignmentScore(gray, width, height, candidate);
+          if (score > bestScore + 0.05) {
+            bestCorners = candidate;
+            bestScore = score;
+            improved = true;
+          }
+        }
+      }
+    }
+  }
+  return { corners: bestCorners, score: bestScore };
+}
+
 // ---------------------------------------------------------------------------
 // Board Detection (main entry point)
 // ---------------------------------------------------------------------------
@@ -272,22 +681,108 @@ export function detectBoard(
   // Find lines
   const { horizontal, vertical } = findLines(edges, dw, dh);
 
-  // Find best 8-interval grids
-  const hGrid = findBestGrid(horizontal, dh);
-  const vGrid = findBestGrid(vertical, dw);
+  // Rank horizontal/vertical grid pairs together. Independent best-line picks
+  // can combine seven board files with a nearby evaluation panel; alternating
+  // square evidence distinguishes the actual 8x8 board.
+  const horizontalCandidates = findGridCandidates(horizontal, dh);
+  const verticalCandidates = findGridCandidates(vertical, dw);
+  const invScale = 1 / scale;
+  const candidates: Array<BoardCandidate & {
+    axisDownsampled: Corners;
+    refinedDownsampled?: Corners;
+  }> = [];
+  for (const hGrid of horizontalCandidates) {
+    for (const vGrid of verticalCandidates) {
+      const alternatingSquares = alternatingSquareSignal(
+        gray, dw, dh, vGrid.start, vGrid.end, hGrid.start, hGrid.end,
+      );
+      const squareAspect = Math.exp(-4 * Math.abs(Math.log(vGrid.span / hGrid.span)));
+      const score = (
+        ((hGrid.score + vGrid.score) / 2) * 0.4
+        + alternatingSquares * 0.45
+        + squareAspect * 0.15
+      );
+      // Digital chessboards are square. Border shadows and evaluation panels
+      // often create a false outer line on only one axis, so retain the ranked
+      // top/left anchors and use the shorter evidence-backed span.
+      const refinedSpan = Math.min(hGrid.span, vGrid.span);
+      const edgeRefinement = refineCandidateCorners(gray, dw, dh, hGrid, vGrid);
+      const axisCorners: Corners = {
+        topLeft: { x: vGrid.start, y: hGrid.start },
+        topRight: { x: vGrid.start + refinedSpan, y: hGrid.start },
+        bottomLeft: { x: vGrid.start, y: hGrid.start + refinedSpan },
+        bottomRight: { x: vGrid.start + refinedSpan, y: hGrid.start + refinedSpan },
+      };
+      const downsampledCorners = edgeRefinement && edgeRefinement.support >= 0.25
+        ? edgeRefinement.corners
+        : axisCorners;
+      const sourceCorners: Corners = {
+        topLeft: { x: downsampledCorners.topLeft.x * invScale, y: downsampledCorners.topLeft.y * invScale },
+        topRight: { x: downsampledCorners.topRight.x * invScale, y: downsampledCorners.topRight.y * invScale },
+        bottomLeft: { x: downsampledCorners.bottomLeft.x * invScale, y: downsampledCorners.bottomLeft.y * invScale },
+        bottomRight: { x: downsampledCorners.bottomRight.x * invScale, y: downsampledCorners.bottomRight.y * invScale },
+      };
+      candidates.push({
+        corners: sourceCorners,
+        axisDownsampled: axisCorners,
+        refinedDownsampled: edgeRefinement?.corners,
+        score,
+        signals: {
+          horizontalGrid: hGrid.score,
+          verticalGrid: vGrid.score,
+          alternatingSquares,
+          squareAspect,
+          edgeRefinement: edgeRefinement?.support,
+        },
+      });
+    }
+  }
+  candidates.sort((left, right) => right.score - left.score);
+  const best = candidates[0];
 
-  if (hGrid && vGrid && hGrid.score > 0.3 && vGrid.score > 0.3) {
-    // Scale back to original image coordinates
-    const invScale = 1 / scale;
+  if (best && best.score >= 0.58 && best.signals.alternatingSquares >= 0.2) {
+    const refined = best.refinedDownsampled;
+    if (refined && (best.signals.edgeRefinement ?? 0) >= 0.25) {
+      const approximateSpan = Math.hypot(
+        best.axisDownsampled.topRight.x - best.axisDownsampled.topLeft.x,
+        best.axisDownsampled.topRight.y - best.axisDownsampled.topLeft.y,
+      );
+      const tilt = Math.max(
+        Math.abs(refined.topRight.y - refined.topLeft.y),
+        Math.abs(refined.bottomRight.y - refined.bottomLeft.y),
+        Math.abs(refined.bottomLeft.x - refined.topLeft.x),
+        Math.abs(refined.bottomRight.x - refined.topRight.x),
+      ) / Math.max(1, approximateSpan);
+      if (tilt >= 0.006) {
+        const optimized = optimizeGridAlignment(gray, dw, dh, refined, approximateSpan);
+        best.corners = {
+          topLeft: { x: optimized.corners.topLeft.x * invScale, y: optimized.corners.topLeft.y * invScale },
+          topRight: { x: optimized.corners.topRight.x * invScale, y: optimized.corners.topRight.y * invScale },
+          bottomLeft: { x: optimized.corners.bottomLeft.x * invScale, y: optimized.corners.bottomLeft.y * invScale },
+          bottomRight: { x: optimized.corners.bottomRight.x * invScale, y: optimized.corners.bottomRight.y * invScale },
+        };
+        best.signals.gridAlignment = optimized.score;
+      } else {
+        best.corners = {
+          topLeft: { x: best.axisDownsampled.topLeft.x * invScale, y: best.axisDownsampled.topLeft.y * invScale },
+          topRight: { x: best.axisDownsampled.topRight.x * invScale, y: best.axisDownsampled.topRight.y * invScale },
+          bottomLeft: { x: best.axisDownsampled.bottomLeft.x * invScale, y: best.axisDownsampled.bottomLeft.y * invScale },
+          bottomRight: { x: best.axisDownsampled.bottomRight.x * invScale, y: best.axisDownsampled.bottomRight.y * invScale },
+        };
+      }
+    }
+    const publicCandidates = candidates.slice(0, 3).map((candidate) => ({
+      corners: candidate.corners,
+      score: candidate.score,
+      signals: candidate.signals,
+    }));
     return {
       found: true,
-      corners: {
-        topLeft: { x: Math.round(vGrid.start * invScale), y: Math.round(hGrid.start * invScale) },
-        topRight: { x: Math.round(vGrid.end * invScale), y: Math.round(hGrid.start * invScale) },
-        bottomLeft: { x: Math.round(vGrid.start * invScale), y: Math.round(hGrid.end * invScale) },
-        bottomRight: { x: Math.round(vGrid.end * invScale), y: Math.round(hGrid.end * invScale) },
-      },
-      quality: hGrid.score > 0.6 && vGrid.score > 0.6 ? 'good' : 'fair',
+      corners: best.corners,
+      quality: best.score >= 0.78 && best.signals.alternatingSquares >= 0.45 ? 'good' : 'fair',
+      score: best.score,
+      candidates: publicCandidates,
+      signals: best.signals,
     };
   }
 
@@ -298,6 +793,8 @@ export function detectBoard(
       found: true,
       corners: fallbackCorners,
       quality: 'fair',
+      score: 0.5,
+      candidates: [],
     };
   }
 
@@ -306,6 +803,8 @@ export function detectBoard(
     found: false,
     corners: centeredSquareCrop(w, h),
     quality: 'manual',
+    score: 0,
+    candidates: [],
   };
 }
 
@@ -399,13 +898,135 @@ export function centeredSquareCrop(w: number, h: number): Corners {
 }
 
 // ---------------------------------------------------------------------------
-// Perspective Warp (Bilinear Interpolation)
+// Perspective Warp (projective homography + bilinear pixel sampling)
 // ---------------------------------------------------------------------------
 
+const QUAD_EPSILON = 1e-7;
+
+function cross(a: Point, b: Point, c: Point): number {
+  return (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
+}
+
+/** Reject non-finite, tiny, concave, or self-crossing corner selections. */
+export function validateCorners(corners: Corners): void {
+  const polygon = [
+    corners.topLeft,
+    corners.topRight,
+    corners.bottomRight,
+    corners.bottomLeft,
+  ];
+  if (polygon.some((point) => !Number.isFinite(point.x) || !Number.isFinite(point.y))) {
+    throw new Error('Board quadrilateral contains a non-finite corner.');
+  }
+
+  const turns = polygon.map((point, index) => (
+    cross(point, polygon[(index + 1) % 4], polygon[(index + 2) % 4])
+  ));
+  const positive = turns.every((turn) => turn > QUAD_EPSILON);
+  const negative = turns.every((turn) => turn < -QUAD_EPSILON);
+  if (!positive && !negative) {
+    throw new Error('Board quadrilateral is crossed, concave, or degenerate.');
+  }
+
+  let twiceArea = 0;
+  for (let index = 0; index < polygon.length; index++) {
+    const next = polygon[(index + 1) % polygon.length];
+    twiceArea += polygon[index].x * next.y - next.x * polygon[index].y;
+  }
+  if (Math.abs(twiceArea) < 2) {
+    throw new Error('Board quadrilateral is degenerate or too small.');
+  }
+}
+
+function solveLinearSystem(matrix: number[][], values: number[]): number[] {
+  const size = values.length;
+  const augmented = matrix.map((row, index) => [...row, values[index]]);
+
+  for (let column = 0; column < size; column++) {
+    let pivot = column;
+    for (let row = column + 1; row < size; row++) {
+      if (Math.abs(augmented[row][column]) > Math.abs(augmented[pivot][column])) pivot = row;
+    }
+    if (Math.abs(augmented[pivot][column]) < QUAD_EPSILON) {
+      throw new Error('Board quadrilateral does not define a stable projective homography.');
+    }
+    [augmented[column], augmented[pivot]] = [augmented[pivot], augmented[column]];
+
+    const divisor = augmented[column][column];
+    for (let entry = column; entry <= size; entry++) augmented[column][entry] /= divisor;
+    for (let row = 0; row < size; row++) {
+      if (row === column) continue;
+      const factor = augmented[row][column];
+      if (factor === 0) continue;
+      for (let entry = column; entry <= size; entry++) {
+        augmented[row][entry] -= factor * augmented[column][entry];
+      }
+    }
+  }
+
+  return augmented.map((row) => row[size]);
+}
+
 /**
- * Warp a quadrilateral region of the source image to a square destination.
- * Uses bilinear interpolation of coordinates (adequate for near-rectangular boards).
+ * Return a destination-unit-square to source-image homography, with h[8] = 1.
  */
+export function destinationToSourceHomography(corners: Corners): number[] {
+  validateCorners(corners);
+  const correspondences: Array<[number, number, Point]> = [
+    [0, 0, corners.topLeft],
+    [1, 0, corners.topRight],
+    [0, 1, corners.bottomLeft],
+    [1, 1, corners.bottomRight],
+  ];
+  const matrix: number[][] = [];
+  const values: number[] = [];
+  for (const [u, v, point] of correspondences) {
+    matrix.push([u, v, 1, 0, 0, 0, -point.x * u, -point.x * v]);
+    values.push(point.x);
+    matrix.push([0, 0, 0, u, v, 1, -point.y * u, -point.y * v]);
+    values.push(point.y);
+  }
+  return [...solveLinearSystem(matrix, values), 1];
+}
+
+export function projectPoint(homography: number[], u: number, v: number): Point {
+  const denominator = homography[6] * u + homography[7] * v + homography[8];
+  if (!Number.isFinite(denominator) || Math.abs(denominator) < QUAD_EPSILON) {
+    throw new Error('Board homography maps through an invalid projective horizon.');
+  }
+  return {
+    x: (homography[0] * u + homography[1] * v + homography[2]) / denominator,
+    y: (homography[3] * u + homography[4] * v + homography[5]) / denominator,
+  };
+}
+
+function bilinearSample(
+  pixels: Uint8ClampedArray,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+  channel: number,
+): number {
+  const clampedX = Math.max(0, Math.min(width - 1, x));
+  const clampedY = Math.max(0, Math.min(height - 1, y));
+  const x0 = Math.floor(clampedX);
+  const y0 = Math.floor(clampedY);
+  const x1 = Math.min(width - 1, x0 + 1);
+  const y1 = Math.min(height - 1, y0 + 1);
+  const fx = clampedX - x0;
+  const fy = clampedY - y0;
+  const topLeft = pixels[(y0 * width + x0) * 4 + channel];
+  const topRight = pixels[(y0 * width + x1) * 4 + channel];
+  const bottomLeft = pixels[(y1 * width + x0) * 4 + channel];
+  const bottomRight = pixels[(y1 * width + x1) * 4 + channel];
+  return topLeft * (1 - fx) * (1 - fy)
+    + topRight * fx * (1 - fy)
+    + bottomLeft * (1 - fx) * fy
+    + bottomRight * fx * fy;
+}
+
+/** Warp a source quadrilateral to a square using a true projective transform. */
 export function warpPerspective(
   pixels: Uint8ClampedArray,
   srcWidth: number,
@@ -413,35 +1034,35 @@ export function warpPerspective(
   corners: Corners,
   destSize: number,
 ): Uint8ClampedArray {
+  if (!Number.isInteger(srcWidth) || !Number.isInteger(srcHeight) || srcWidth < 1 || srcHeight < 1) {
+    throw new Error('Source image dimensions must be positive integers.');
+  }
+  if (!Number.isInteger(destSize) || destSize < 2) {
+    throw new Error('Perspective destination size must be an integer of at least 2 pixels.');
+  }
+  if (pixels.length !== srcWidth * srcHeight * 4) {
+    throw new Error('Source pixel buffer length does not match its dimensions.');
+  }
+
   const dest = new Uint8ClampedArray(destSize * destSize * 4);
-  const { topLeft, topRight, bottomLeft, bottomRight } = corners;
+  const homography = destinationToSourceHomography(corners);
 
   for (let dy = 0; dy < destSize; dy++) {
     const v = dy / (destSize - 1);
     for (let dx = 0; dx < destSize; dx++) {
       const u = dx / (destSize - 1);
-
-      const x =
-        (1 - u) * (1 - v) * topLeft.x +
-        u * (1 - v) * topRight.x +
-        (1 - u) * v * bottomLeft.x +
-        u * v * bottomRight.x;
-
-      const y =
-        (1 - u) * (1 - v) * topLeft.y +
-        u * (1 - v) * topRight.y +
-        (1 - u) * v * bottomLeft.y +
-        u * v * bottomRight.y;
-
-      const sx = Math.max(0, Math.min(srcWidth - 1, Math.round(x)));
-      const sy = Math.max(0, Math.min(srcHeight - 1, Math.round(y)));
-      const srcIdx = (sy * srcWidth + sx) * 4;
+      const source = projectPoint(homography, u, v);
       const destIdx = (dy * destSize + dx) * 4;
-
-      dest[destIdx] = pixels[srcIdx];
-      dest[destIdx + 1] = pixels[srcIdx + 1];
-      dest[destIdx + 2] = pixels[srcIdx + 2];
-      dest[destIdx + 3] = pixels[srcIdx + 3];
+      for (let channel = 0; channel < 4; channel++) {
+        dest[destIdx + channel] = bilinearSample(
+          pixels,
+          srcWidth,
+          srcHeight,
+          source.x,
+          source.y,
+          channel,
+        );
+      }
     }
   }
   return dest;

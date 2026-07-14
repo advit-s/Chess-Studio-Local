@@ -1,65 +1,65 @@
-# Chess Piece Classification Model
+# Local chess OCR model
 
-## Status: **Not Yet Trained**
+Chess Studio Local ships one browser-oriented TensorFlow.js model in
+`chess-ocr/`. It does not use ONNX, a Python service, or an external inference
+API.
 
-This directory is where the ONNX model file (`chess-pieces.onnx`) should be placed once trained.
+## Provenance
 
-## Expected Model Specification
+- Model project: `Elucidation/ChessboardFenTensorflowJs` v1.0.0
+- Pinned revision: `c75063981c4f781f63ac90c0c026402e23ebbef6`
+- Model/project licence: MIT
+- Runtime: vendored TensorFlow.js 0.15.3, Apache-2.0
+- Integrity manifest: `chess-ocr/model-integrity.json`
 
-### Input
-- **Name**: `input` (or model-defined)
-- **Shape**: `[1, 3, 32, 32]` — batch of 1, 3 RGB channels, 32×32 pixels
-- **Type**: `float32`
-- **Normalization**: Pixel values in `[0, 1]` range (divide by 255)
-- **Channel order**: RGB, CHW layout
+The seven runtime/model files are verified byte-for-byte by `npm ci`,
+`npm run verify:ocr-assets`, and `npm test`. Installation never downloads or
+replaces them.
 
-### Output
-- **Name**: `output` (or model-defined)
-- **Shape**: `[1, 13]` — raw logits for 13 classes
-- **Type**: `float32`
+## Exact model contract
 
-### Class Ordering (13 classes)
-| Index | Class | Description |
-|-------|-------|-------------|
-| 0 | `empty` | No piece on square |
-| 1 | `wp` | White Pawn |
-| 2 | `wn` | White Knight |
-| 3 | `wb` | White Bishop |
-| 4 | `wr` | White Rook |
-| 5 | `wq` | White Queen |
-| 6 | `wk` | White King |
-| 7 | `bp` | Black Pawn |
-| 8 | `bn` | Black Knight |
-| 9 | `bb` | Black Bishop |
-| 10 | `br` | Black Rook |
-| 11 | `bq` | Black Queen |
-| 12 | `bk` | Black King |
+The scanner first creates a projectively aligned 256×256 board. The model
+preprocessing matches the pinned upstream code:
 
-## Training Requirements
+1. Read the first RGBA pixel channel into `float32` values in the range 0–255.
+2. Do not normalize the values.
+3. Split the board into eight 256×32 file strips.
+4. Reshape every strip to eight 1,024-value tiles.
+5. Concatenate to `[64, 1024]` in file-major order:
+   `a8..a1, b8..b1, ... h8..h1`.
+6. Run graph inputs `Input` and scalar `KeepProb = 1`.
 
-The model should be trained on square images extracted from real chessboard screenshots:
+The `probabilities` node must be finite `[64, 13]` rows whose sums are valid
+probabilities. The `prediction` node is `[64]` argmax class indices. The class
+order is:
 
-### Minimum training diversity
-- Multiple piece sets (Lichess, Chess.com, wooden, tournament)
-- Both light and dark square backgrounds
-- Multiple board color themes
-- Various resolutions (screenshots from different displays)
-- Coordinates enabled and disabled
-- Slight perspective distortion
+| Index | Class |
+| ---: | --- |
+| 0 | empty |
+| 1 | white king |
+| 2 | white queen |
+| 3 | white rook |
+| 4 | white bishop |
+| 5 | white knight |
+| 6 | white pawn |
+| 7 | black king |
+| 8 | black queen |
+| 9 | black rook |
+| 10 | black bishop |
+| 11 | black knight |
+| 12 | black pawn |
 
-### Recommended architecture
-- Small CNN (e.g., 3-layer convnet with ~50K parameters)
-- Or MobileNetV3-Small with custom head
-- Must run in <10ms per square in browser via ONNX Runtime WASM
+The UI calls numeric output a **model score**, not calibrated confidence. If
+only class indices are available, the score is unavailable; the application
+never invents 100% or synthetic probabilities.
 
-### Training framework
-- PyTorch → export via `torch.onnx.export()`
-- Or TensorFlow → convert via `tf2onnx`
+## Runtime notes
 
-## How to Use
+The OCR model runs in `scanWorker.js`, separate from the Stockfish worker. The
+worker selects the CPU backend because the legacy model-compatible WebGL
+backend assumes a DOM that dedicated workers do not provide. The runtime and
+model are cached only after the scanner's explicit offline-model action.
 
-1. Train the model using one of the approaches above
-2. Export to ONNX format
-3. Place the file as `chess-pieces.onnx` in this directory
-4. The app will auto-detect and load it on the Scan tab
-5. Piece recognition will switch from manual-only to auto+manual-correction
+This model was trained for aligned digital chess screenshots and has limited
+piece-set generalization. Manual four-corner correction, FEN editing, and the
+piece editor remain available when recognition is wrong or unavailable.
