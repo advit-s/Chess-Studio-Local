@@ -1,0 +1,242 @@
+[
+  {
+    "tile_name": "empty.png",
+    "expected_class": "empty",
+    "mapped_class": "empty",
+    "score": 0.8009345531463623,
+    "topCandidates": [
+      {
+        "piece": "empty",
+        "score": 0.8009345531463623
+      },
+      {
+        "piece": "wq",
+        "score": 0.026878200471401215
+      },
+      {
+        "piece": "bk",
+        "score": 0.026338966563344002
+      }
+    ]
+  },
+  {
+    "tile_name": "wk.png",
+    "expected_class": "wk",
+    "mapped_class": "wk",
+    "score": 0.9835126996040344,
+    "topCandidates": [
+      {
+        "piece": "wk",
+        "score": 0.9835126996040344
+      },
+      {
+        "piece": "wn",
+        "score": 0.007101258262991905
+      },
+      {
+        "piece": "wb",
+        "score": 0.004249344114214182
+      }
+    ]
+  },
+  {
+    "tile_name": "wq.png",
+    "expected_class": "wq",
+    "mapped_class": "wq",
+    "score": 0.9940845966339111,
+    "topCandidates": [
+      {
+        "piece": "wq",
+        "score": 0.9940845966339111
+      },
+      {
+        "piece": "wr",
+        "score": 0.0049199676141142845
+      },
+      {
+        "piece": "wk",
+        "score": 0.00045662993215955794
+      }
+    ]
+  },
+  {
+    "tile_name": "wr.png",
+    "expected_class": "wr",
+    "mapped_class": "wr",
+    "score": 0.9988802075386047,
+    "topCandidates": [
+      {
+        "piece": "wr",
+        "score": 0.9988802075386047
+      },
+      {
+        "piece": "wp",
+        "score": 0.0008241484174504876
+      },
+      {
+        "piece": "br",
+        "score": 0.0002438935189275071
+      }
+    ]
+  },
+  {
+    "tile_name": "wb.png",
+    "expected_class": "wb",
+    "mapped_class": "wb",
+    "score": 0.991402268409729,
+    "topCandidates": [
+      {
+        "piece": "wb",
+        "score": 0.991402268409729
+      },
+      {
+        "piece": "wp",
+        "score": 0.0084749236702919
+      },
+      {
+        "piece": "wn",
+        "score": 0.000044031228753738105
+      }
+    ]
+  },
+  {
+    "tile_name": "wn.png",
+    "expected_class": "wn",
+    "mapped_class": "wn",
+    "score": 0.9984472990036011,
+    "topCandidates": [
+      {
+        "piece": "wn",
+        "score": 0.9984472990036011
+      },
+      {
+        "piece": "wp",
+        "score": 0.0006599203916266561
+      },
+      {
+        "piece": "wq",
+        "score": 0.00034503749338909984
+      }
+    ]
+  },
+  {
+    "tile_name": "wp.png",
+    "expected_class": "wp",
+    "mapped_class": "wp",
+    "score": 0.997024655342102,
+    "topCandidates": [
+      {
+        "piece": "wp",
+        "score": 0.997024655342102
+      },
+      {
+        "piece": "wr",
+        "score": 0.001789404428564012
+      },
+      {
+        "piece": "bp",
+        "score": 0.001114628161303699
+      }
+    ]
+  },
+  {
+    "tile_name": "bk.png",
+    "expected_class": "bk",
+    "mapped_class": "bk",
+    "score": 0.9980319142341614,
+    "topCandidates": [
+      {
+        "piece": "bk",
+        "score": 0.9980319142341614
+      },
+      {
+        "piece": "empty",
+        "score": 0.0014937520027160645
+      },
+      {
+        "piece": "bp",
+        "score": 0.0002678531454876065
+      }
+    ]
+  },
+  {
+    "tile_name": "bq.png",
+    "expected_class": "bq",
+    "mapped_class": "bq",
+    "score": 0.9969200491905212,
+    "topCandidates": [
+      {
+        "piece": "bq",
+        "score": 0.9969200491905212
+      },
+      {
+        "piece": "bk",
+        "score": 0.0016510835848748684
+      },
+      {
+        "piece": "br",
+        "score": 0.0009828582406044006
+      }
+    ]
+  },
+  {
+    "tile_name": "br.png",
+    "expected_class": "br",
+    "mapped_class": "br",
+    "score": 0.9999925494194031,
+    "topCandidates": [
+      {
+        "piece": "br",
+        "score": 0.9999925494194031
+      },
+      {
+        "piece": "bk",
+        "score": 0.00000434953062722343
+      },
+      {
+        "piece": "empty",
+        "score": 8.940696716308594e-7
+      }
+    ]
+  },
+  {
+    "tile_name": "bb.png",
+    "expected_class": "bb",
+    "mapped_class": "bb",
+    "score": 0.9997018575668335,
+    "topCandidates": [
+      {
+        "piece": "bb",
+        "score": 0.9997018575668335
+      },
+      {
+        "piece": "empty",
+        "score": 0.00013625621795654297
+      },
+      {
+        "piece": "bp",
+        "score": 0.00008721624180907384
+      }
+    ]
+  },
+  {
+    "tile_name": "bn.png",
+    "expected_class": "bn",
+    "mapped_class": "bn",
+    "score": 0.9998055100440979,
+    "topCandidates": [
+      {
+        "piece": "bn",
+        "score": 0.9998055100440979
+      },
+      {
+        "piece": "bk",
+        "score": 0.00010098692291649058
+      },
+      {
+        "piece": "br",
+        "score": 0.00002325241257494781
+      }
+    ]
+  }
+]

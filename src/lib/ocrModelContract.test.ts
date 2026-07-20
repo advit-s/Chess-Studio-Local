@@ -1,9 +1,13 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
   decodeClassPredictions,
   decodeProbabilityScores,
   rgbaToModelTiles,
+  MODEL_CLASSES,
+  MODEL_CLASS_COUNT,
 } from './ocrModelContract';
 
 describe('OCR model preprocessing', () => {
@@ -93,5 +97,26 @@ describe('OCR argmax output decoding', () => {
     expect(() => decodeClassPredictions(predictions, [8, 8])).toThrow(/64/);
     predictions[13] = 99;
     expect(() => decodeClassPredictions(predictions, [64])).toThrow(/class index/);
+  });
+});
+
+describe('OCR contract metadata alignment', () => {
+  it('verifies that code-defined parameters match public model metadata.json exactly', () => {
+    const metadataPath = path.resolve(__dirname, '../../public/models/chess-ocr/metadata.json');
+    const metadataContent = readFileSync(metadataPath, 'utf8');
+    const metadata = JSON.parse(metadataContent);
+
+    // Verify classes array matches MODEL_CLASSES exactly
+    expect(metadata.classes).toEqual(MODEL_CLASSES);
+
+    // Verify class count
+    expect(metadata.classes).toHaveLength(MODEL_CLASS_COUNT);
+
+    // Verify preprocessing defaults
+    expect(metadata.inputShape).toEqual([64, 1024]);
+    expect(metadata.rgb).toBe(false);
+    expect(metadata.normalization).toBe('none');
+    expect(metadata.tileOrdering).toBe('file-major');
+    expect(metadata.softmaxRequired).toBe(true);
   });
 });

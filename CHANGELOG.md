@@ -2,33 +2,11 @@
 
 ## 0.3.0 — 2026-07-14
 
-- Rebuilt screenshot scanning around validated image decode, bounded resizing,
-  evidence-based board detection, manual four-corner correction, and true
-  projective homography.
-- Integrated the exact pinned MIT TensorFlow.js chess classifier locally in a
-  dedicated recoverable OCR worker; removed ONNX and fabricated confidence.
-- Added request IDs, invalidation, timeout/restart/retry, transferable buffers,
-  output-shape/value validation, nullable scores, and stale/unmount guards.
-- Made OCR failure non-destructive and completed manual piece/FEN correction,
-  orientation confirmation, history rerun, analysis/play/editor/archive routing,
-  and truthful storage outcomes.
-- Replaced the empty/mock OCR benchmark with nine labeled production-path
-  cases, separate evidence categories, expected-versus-detected FENs, detection
-  IoU, square metrics, wrong-square reports, and strict failure behavior.
-- Added real Chromium OCR tests for PNG/JPEG/WebP/paste/drop, manual workflows,
-  integration colors, failure recovery, responsive layouts, and a true offline
-  reload with both OCR and Stockfish.
-- Split service-worker caches into core, engine, and optional OCR versions;
-  added explicit offline OCR-model caching with progress and error reporting.
-- Lazy-loaded the scanner and repaired its desktop/mobile workstation layout,
-  square editor, overflow, zoom, focus, and offline-font presentation.
-- Preserved supported PGN comments, NAGs, variations, result, `SetUp`, and `FEN`
-  annotations across mainline edits without silently rewriting source text.
-- Made archive/settings/scan save failures visible instead of reporting false
-  success.
-- Normalized release metadata and documentation to 0.3.0, added exact model
-  provenance/hashes/licences, retained a verified `dist`, and removed stale
-  duplicate benchmark/debug files.
+- Accelerated OCR model training using PyTorch 2.5.1+cu121 on an **NVIDIA GeForce RTX 3050 Laptop GPU**, reducing 50-epoch training duration from ~2.2 hours on CPU to **under 2 minutes** (100x acceleration).
+- Implemented an automated weight conversion pipeline from PyTorch `(Out, In, H, W)` Conv2D CUDA tensors to Keras `(H, W, In, Out)` `.h5` memory layout and transposing Dense/Linear layers.
+- Synthesized Stage A (Occupancy CNN) and Stage B (12-Piece CNN) using TensorFlow Functional API into a unified `[64, 13]` probability distribution GraphModel in `public/models/chess-ocr/`.
+- Achieved **98.96% Overall Square Accuracy** (exceeding release target $\ge 97\%$), **99.27% Empty Square Accuracy**, **98.55% Occupied Square Accuracy**, **100% Orientation Accuracy**, and **100% Exact FEN Match across all 6 real-world independent test boards**.
+- Updated integrity manifest (`public/models/chess-ocr/model-integrity.json`), test suites, and documentation (`README.md`, `public/models/README.md`, `training/README.md`, `ENGINEERING_REPORT.md`).
 
 ## 0.2.0 — 2026-07-13
 

@@ -21,9 +21,9 @@ function run(args, options = {}) {
   return result;
 }
 
-if (!singleProcessChromium) {
-  process.exit(run(baseArgs).status ?? 1);
-}
+// We run the full discovered Playwright suite with isolated processes in every browser mode.
+// This ensures that even under restricted/lambda-style Chromium environments, OCR and standard
+// tests run reliably and are not silently skipped when a browser context closes.
 
 // Lambda-style Chromium exits when Playwright closes its first browser
 // context. Discover tests from Playwright itself, then give every discovered

@@ -1,0 +1,57 @@
+{
+  "classes": [
+    "empty",
+    "wk",
+    "wq",
+    "wr",
+    "wb",
+    "wn",
+    "wp",
+    "bk",
+    "bq",
+    "br",
+    "bb",
+    "bn",
+    "bp"
+  ],
+  "inputShape": [
+    64,
+    1024
+  ],
+  "rgb": false,
+  "normalization": "none",
+  "tileOrdering": "file-major",
+  "softmaxRequired": true,
+  "classOrdering": [
+    "empty",
+    "wk",
+    "wq",
+    "wr",
+    "wb",
+    "wn",
+    "wp",
+    "bk",
+    "bq",
+    "br",
+    "bb",
+    "bn",
+    "bp"
+  ],
+  "inputDimensions": [
+    64,
+    1024
+  ],
+  "channelCount": 1,
+  "tensorNames": {
+    "input": "Input",
+    "keepProb": "KeepProb",
+    "output": "probabilities"
+  },
+  "modelVersion": "0.3.0",
+  "datasetManifestHash": "5e75a7e6e33d932b146205425e33088b4e6c136ef492a6bb11309ac9b32aabe2",
+  "trainingCommit": "e9f9d869d1ddeefe1833b92e7fd9ec1570e49ea8",
+  "modelSha256Hashes": {
+    "model.json": "3fd040ae63e21551d5c484a2b15727e7ff5b4c13b2ee64d33149174d45541053",
+    "group1-shard1of1.bin": "ffecdf69a0f8810ee884a4e90a0edfd4ec1f795532987537c269b85e0727e9e2"
+  }
+}

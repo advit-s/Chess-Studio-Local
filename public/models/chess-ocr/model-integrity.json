@@ -9,9 +9,9 @@
   },
   "runtime": {
     "name": "TensorFlow.js",
-    "version": "0.15.3",
+    "version": "4.22.0",
     "license": "Apache-2.0",
-    "distribution": "Vendored browser runtime required by loadFrozenModel"
+    "distribution": "Vendored browser runtime required by loadGraphModel"
   },
   "contract": {
     "alignedBoard": {
@@ -21,9 +21,15 @@
     },
     "input": {
       "name": "Input",
-      "shape": [64, 1024],
+      "shape": [
+        64,
+        1024
+      ],
       "dtype": "float32",
-      "pixelRange": [0, 255],
+      "pixelRange": [
+        0,
+        255
+      ],
       "normalization": "none",
       "tileOrder": "file-major: a8..a1, b8..b1, through h8..h1"
     },
@@ -34,12 +40,17 @@
     "outputs": {
       "probabilities": {
         "name": "probabilities",
-        "shape": [64, 13],
+        "shape": [
+          64,
+          13
+        ],
         "semantics": "softmax model scores"
       },
       "prediction": {
         "name": "prediction",
-        "shape": [64],
+        "shape": [
+          64
+        ],
         "semantics": "argmax class indices"
       }
     },
@@ -63,44 +74,18 @@
   "assets": [
     {
       "path": "public/tf.min.js",
-      "bytes": 967489,
-      "sha256": "8e51ada3786380cbe9937a53a8ad2f753f3014772033f28fa7dd859b8f0a81e4"
+      "bytes": 1469843,
+      "sha256": "300dfae273d20b4046f46a06d735688f03675a807561e9bcb5f664eb2f3d2831"
     },
     {
-      "path": "public/models/chess-ocr/tensorflowjs_model.pb",
-      "bytes": 2417,
-      "sha256": "ecfc6a1123d69f37bd8eba4394809dabbb15950973f91b439cbe48caa7f9a05f"
+      "path": "public/models/chess-ocr/model.json",
+      "bytes": 38293,
+      "sha256": "3fd040ae63e21551d5c484a2b15727e7ff5b4c13b2ee64d33149174d45541053"
     },
     {
-      "path": "public/models/chess-ocr/weights_manifest.json",
-      "bytes": 812,
-      "sha256": "07fba17d74075d73592b1ea1903d62d1ab44ecb083d413a497df2b08ba14fc3c"
-    },
-    {
-      "path": "public/models/chess-ocr/group1-shard1of5",
-      "bytes": 4194304,
-      "sha256": "a9f1e00dae34443963de282e85d7ea24663bcf4387c7d7ad61fd594578ef03c4"
-    },
-    {
-      "path": "public/models/chess-ocr/group1-shard2of5",
-      "bytes": 4194304,
-      "sha256": "996bdb13f58d581564965b1d303cb5a47d4394bb55b7d0ec68be1911c32e6e67"
-    },
-    {
-      "path": "public/models/chess-ocr/group1-shard3of5",
-      "bytes": 4194304,
-      "sha256": "a754e2dafae30ec46648e17044fbc10c472cbd65b08285578d307414feeb57de"
-    },
-    {
-      "path": "public/models/chess-ocr/group1-shard4of5",
-      "bytes": 4194304,
-      "sha256": "dc705766881db0deb75f9cb0f169150609342dfb4a345c9dbea625768d5d7c92"
-    },
-    {
-      "path": "public/models/chess-ocr/group1-shard5of5",
-      "bytes": 265808,
-      "sha256": "3b911775bb51572f33bb0bbde668f7179841883b3ca643a6a78f8e1680f91598"
+      "path": "public/models/chess-ocr/group1-shard1of1.bin",
+      "bytes": 3637488,
+      "sha256": "ffecdf69a0f8810ee884a4e90a0edfd4ec1f795532987537c269b85e0727e9e2"
     }
   ]
 }
-

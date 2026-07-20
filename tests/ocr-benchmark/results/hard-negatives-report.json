@@ -1,0 +1,95 @@
+{
+  "generatedAt": "2026-07-20T06:32:51.923Z",
+  "totalFailedSquares": 10,
+  "counts": {
+    "empty-as-piece": 4,
+    "pawn-as-king": 3,
+    "king-color-flip": 1,
+    "piece-as-king": 1,
+    "bishop-as-pawn": 1,
+    "other-misclassification": 0
+  },
+  "categories": {
+    "empty-as-piece": [
+      {
+        "caseId": "upstream-reference-example",
+        "category": "upstream-reference",
+        "square": "d5",
+        "expected": "empty",
+        "detected": "bq"
+      },
+      {
+        "caseId": "augmented-compressed-panels",
+        "category": "augmented-transformed",
+        "square": "d5",
+        "expected": "empty",
+        "detected": "bq"
+      },
+      {
+        "caseId": "augmented-rotate-1-5",
+        "category": "augmented-transformed",
+        "square": "d5",
+        "expected": "empty",
+        "detected": "bq"
+      },
+      {
+        "caseId": "augmented-perspective",
+        "category": "augmented-transformed",
+        "square": "d5",
+        "expected": "empty",
+        "detected": "bq"
+      }
+    ],
+    "pawn-as-king": [
+      {
+        "caseId": "generated-start-light",
+        "category": "generated-application",
+        "square": "h2",
+        "expected": "wp",
+        "detected": "wk"
+      },
+      {
+        "caseId": "generated-middlegame-dark",
+        "category": "generated-application",
+        "square": "f2",
+        "expected": "wp",
+        "detected": "wk"
+      },
+      {
+        "caseId": "generated-middlegame-dark",
+        "category": "generated-application",
+        "square": "h2",
+        "expected": "wp",
+        "detected": "wk"
+      }
+    ],
+    "king-color-flip": [
+      {
+        "caseId": "generated-endgame-black-wood",
+        "category": "generated-application",
+        "square": "f2",
+        "expected": "wk",
+        "detected": "bk"
+      }
+    ],
+    "piece-as-king": [
+      {
+        "caseId": "augmented-compressed-panels",
+        "category": "augmented-transformed",
+        "square": "a8",
+        "expected": "br",
+        "detected": "bk"
+      }
+    ],
+    "bishop-as-pawn": [
+      {
+        "caseId": "generated-start-light",
+        "category": "generated-application",
+        "square": "c1",
+        "expected": "wb",
+        "detected": "wp"
+      }
+    ],
+    "other-misclassification": []
+  }
+}

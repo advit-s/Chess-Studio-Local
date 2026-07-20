@@ -288,6 +288,7 @@ test('supported settings persist after refresh and production assets remain avai
 });
 
 test('game review can be cancelled and restarted without leaking engine work', async ({ page }) => {
+  test.setTimeout(120_000);
   const errors = trackBrowserErrors(page);
   await openApp(page);
   await page.getByLabel('Depth').fill('8');

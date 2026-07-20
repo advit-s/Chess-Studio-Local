@@ -30,13 +30,8 @@ const OCR_ASSETS = [
   scopedUrl('ocr-model-contract.js'),
   scopedUrl('ocr-worker-state.js'),
   scopedUrl('models/chess-ocr/model-integrity.json'),
-  scopedUrl('models/chess-ocr/tensorflowjs_model.pb'),
-  scopedUrl('models/chess-ocr/weights_manifest.json'),
-  scopedUrl('models/chess-ocr/group1-shard1of5'),
-  scopedUrl('models/chess-ocr/group1-shard2of5'),
-  scopedUrl('models/chess-ocr/group1-shard3of5'),
-  scopedUrl('models/chess-ocr/group1-shard4of5'),
-  scopedUrl('models/chess-ocr/group1-shard5of5'),
+  scopedUrl('models/chess-ocr/model.json'),
+  scopedUrl('models/chess-ocr/group1-shard1of1.bin'),
 ];
 
 function findBuiltAssets(html) {

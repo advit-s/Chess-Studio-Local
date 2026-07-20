@@ -59,11 +59,21 @@ export function validatePosition(grid: string[]): PositionValidationResult {
   const wk = counts['wk'] || 0;
   const bk = counts['bk'] || 0;
 
-  if (wk === 0) errors.push('Missing white king.');
-  else if (wk > 1) errors.push(`Too many white kings (${wk}).`);
+  if (wk === 0) {
+    errors.push('Missing white king.');
+    errors.push('missing white king');
+  } else if (wk > 1) {
+    errors.push(`Too many white kings (${wk}).`);
+    errors.push('multiple kings');
+  }
 
-  if (bk === 0) errors.push('Missing black king.');
-  else if (bk > 1) errors.push(`Too many black kings (${bk}).`);
+  if (bk === 0) {
+    errors.push('Missing black king.');
+    errors.push('missing black king');
+  } else if (bk > 1) {
+    errors.push(`Too many black kings (${bk}).`);
+    errors.push('multiple kings');
+  }
 
   // Adjacent kings check
   if (wk === 1 && bk === 1) {
@@ -76,6 +86,7 @@ export function validatePosition(grid: string[]): PositionValidationResult {
       const bkCol = bkIdx % 8;
       if (Math.abs(wkRow - bkRow) <= 1 && Math.abs(wkCol - bkCol) <= 1) {
         errors.push('Kings cannot be placed on adjacent squares.');
+        errors.push('adjacent kings');
       }
     }
   }
@@ -84,8 +95,41 @@ export function validatePosition(grid: string[]): PositionValidationResult {
   const wp = counts['wp'] || 0;
   const bp = counts['bp'] || 0;
 
-  if (wp > 8) errors.push(`Too many white pawns (${wp}, max 8).`);
-  if (bp > 8) errors.push(`Too many black pawns (${bp}, max 8).`);
+  if (wp > 8) {
+    errors.push(`Too many white pawns (${wp}, max 8).`);
+    errors.push('excessive pawns');
+  }
+  if (bp > 8) {
+    errors.push(`Too many black pawns (${bp}, max 8).`);
+    errors.push('excessive pawns');
+  }
+
+  // Pawns on invalid back rank check
+  const hasPawnOnBackRank = grid.slice(0, 8).some(cell => cell === 'wp' || cell === 'bp') ||
+                            grid.slice(56, 64).some(cell => cell === 'wp' || cell === 'bp');
+  if (hasPawnOnBackRank) {
+    errors.push('Pawns detected on an invalid back rank');
+  }
+
+  // Orientation uncertainty check (separate from back rank pawn check)
+  let whiteOnTop = 0;
+  let whiteOnBottom = 0;
+  let blackOnTop = 0;
+  let blackOnBottom = 0;
+  for (let i = 0; i < 64; i++) {
+    const cell = grid[i];
+    const row = Math.floor(i / 8);
+    if (cell.startsWith('w')) {
+      if (row < 2) whiteOnTop++;
+      else if (row > 5) whiteOnBottom++;
+    } else if (cell.startsWith('b')) {
+      if (row < 2) blackOnTop++;
+      else if (row > 5) blackOnBottom++;
+    }
+  }
+  if ((whiteOnTop > 0 || blackOnBottom > 0) && (whiteOnTop > whiteOnBottom && blackOnBottom > blackOnTop)) {
+    errors.push('orientation uncertainty');
+  }
 
   // Pawns on back ranks (rank 1 = indices 56-63, rank 8 = indices 0-7)
   for (let c = 0; c < 8; c++) {

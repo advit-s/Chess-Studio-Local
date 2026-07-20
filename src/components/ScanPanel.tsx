@@ -62,6 +62,7 @@ interface RecognitionResult extends WarpResult {
   modelLoaded: true;
   modelLoadMs: number | null;
   inferenceMs: number;
+  numTensors?: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -126,6 +127,10 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
   const [scoreKind, setScoreKind] = useState<'model-score' | 'unavailable'>('unavailable');
   const [modelLoaded, setModelLoaded] = useState<boolean | null>(null);
   const [modelError, setModelError] = useState<string | null>(null);
+  const [useLegacyModel, setUseLegacyModel] = useState<boolean>(() => {
+    return localStorage.getItem('chess-ocr-use-legacy') === 'true';
+  });
+  const [modelVersion, setModelVersion] = useState<string>('');
   const [offlineCacheStatus, setOfflineCacheStatus] = useState<OfflineOcrCacheStatus | null>(null);
   const [offlineCacheProgress, setOfflineCacheProgress] = useState<OfflineOcrCacheProgress | null>(null);
   const [offlineCacheError, setOfflineCacheError] = useState<string>('');
@@ -226,18 +231,52 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
   // cancellation and stale-response suppression.
   useEffect(() => {
     const base = new URL(import.meta.env.BASE_URL, window.location.href);
-    const workerUrl = new URL('scanWorker.js', base).toString();
+    const workerUrl = new URL(`scanWorker.js?legacy=${useLegacyModel}`, base).toString();
     const client = new OcrWorkerClient(() => new Worker(workerUrl, { name: 'chess-ocr-local' }), {
       defaultTimeoutMs: 45_000,
     });
     workerClientRef.current = client;
 
+    setModelLoaded(null);
+    setModelError(null);
+
     return () => {
       client.dispose();
       workerClientRef.current = null;
-      if (previewObjectUrlRef.current) URL.revokeObjectURL(previewObjectUrlRef.current);
+    };
+  }, [useLegacyModel]);
+
+  // Clean up object URL when component unmounts
+  useEffect(() => {
+    return () => {
+      if (previewObjectUrlRef.current) {
+        URL.revokeObjectURL(previewObjectUrlRef.current);
+      }
     };
   }, []);
+
+  // Load model version dynamically from metadata.json
+  useEffect(() => {
+    const base = new URL(import.meta.env.BASE_URL, window.location.href);
+    const metadataPath = new URL(useLegacyModel ? 'models/chess-ocr-legacy/metadata.json' : 'models/chess-ocr/metadata.json', base).toString();
+    fetch(metadataPath)
+      .then((res) => {
+        if (!res.ok) throw new Error();
+        return res.json();
+      })
+      .then((data) => {
+        if (data.modelVersion) {
+          setModelVersion(data.modelVersion);
+        } else if (data.version) {
+          setModelVersion(data.version);
+        } else {
+          setModelVersion(useLegacyModel ? 'v1.0.0-legacy' : 'v0.3.0');
+        }
+      })
+      .catch(() => {
+        setModelVersion(useLegacyModel ? 'v1.0.0-legacy' : 'v0.3.0');
+      });
+  }, [useLegacyModel]);
 
   // The production service worker keeps OCR in a separately versioned cache.
   // Development intentionally unregisters service workers to avoid stale code.
@@ -362,6 +401,7 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
         timeoutMs: 45_000,
         onProgress: setProgressStep,
       });
+      console.log(`[ScanPanel] OCR complete, tensors: ${result.numTensors ?? 'null'}, inference time: ${result.inferenceMs}ms`);
       if (!mountedRef.current || operationTokenRef.current !== token) return;
       const orientation = imageOrientationRef.current;
       const canonicalGrid = canonicalizeImageOrder(result.grid, orientation);
@@ -383,7 +423,7 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
       const validation = validatePosition(canonicalGrid);
       showToast(validation.valid
         ? 'Local piece recognition complete — verify the position'
-        : 'Recognition completed with position errors; manual correction is available');
+        : 'Recognition needs manual correction');
     } catch (error) {
       if (isSupersededError(error) || !mountedRef.current || operationTokenRef.current !== token) return;
       const workerError = error instanceof OcrWorkerError ? error : null;
@@ -1394,8 +1434,15 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
                     </span>
                   )}
                   {modelLoaded === true && (
-                    <span className="experimental-badge">
-                      OCR Active
+                    <span
+                      className="experimental-badge"
+                      style={!positionValidation.valid ? {
+                        backgroundColor: 'var(--danger)',
+                        color: '#fff',
+                        borderColor: 'var(--danger)'
+                      } : undefined}
+                    >
+                      {!positionValidation.valid ? 'Recognition needs manual correction' : 'OCR Active (Experimental)'}
                     </span>
                   )}
                   <span
@@ -1407,6 +1454,22 @@ export function ScanPanel({ onOpenAnalysis, onOpenPlay, onSaveToArchive, showToa
                   >
                     {boardDetectionQuality === 'good' ? 'Board detected' : boardDetectionQuality === 'fair' ? 'Board estimated' : 'Manual crop'}
                   </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', fontSize: '11px', color: 'var(--muted)' }}>
+                  <span>Model: <strong>{modelVersion || 'loading...'}</strong></span>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', marginLeft: 'auto' }}>
+                    <input
+                      type="checkbox"
+                      checked={useLegacyModel}
+                      onChange={(e) => {
+                        const val = e.target.checked;
+                        setUseLegacyModel(val);
+                        localStorage.setItem('chess-ocr-use-legacy', String(val));
+                      }}
+                      style={{ cursor: 'pointer', margin: 0 }}
+                    />
+                    <span>Use Legacy Fallback</span>
+                  </label>
                 </div>
               </div>
             </div>

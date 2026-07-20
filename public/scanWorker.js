@@ -8,12 +8,10 @@ const modulesPromise = Promise.all([
   import('./ocr-worker-state.js'),
 ]);
 
-const MODEL_GRAPH_URL = new URL(
-  'models/chess-ocr/tensorflowjs_model.pb',
-  self.location.href,
-).toString();
-const MODEL_WEIGHTS_URL = new URL(
-  'models/chess-ocr/weights_manifest.json',
+const params = new URLSearchParams(self.location.search);
+const useLegacy = params.get('legacy') === 'true';
+const MODEL_URL = new URL(
+  useLegacy ? 'models/chess-ocr-legacy/model.json' : 'models/chess-ocr/model.json',
   self.location.href,
 ).toString();
 const MAX_DECODED_PIXELS = 32_000_000;
@@ -92,8 +90,15 @@ async function loadTfRuntime() {
     }
     self.document = {
       createElement(name) {
-        if (name !== 'canvas') throw new Error(`TensorFlow.js requested unsupported worker element: ${name}`);
-        return new self.OffscreenCanvas(1, 1);
+        if (name === 'canvas') {
+          return new self.OffscreenCanvas(1, 1);
+        }
+        return {
+          style: {},
+          setAttribute() {},
+          removeAttribute() {},
+          appendChild() {},
+        };
       },
     };
   }
@@ -119,9 +124,9 @@ async function createAndValidateModel() {
   let keepProb;
   let output;
   try {
-    model = await self.tf.loadFrozenModel(MODEL_GRAPH_URL, MODEL_WEIGHTS_URL);
+    model = await self.tf.loadGraphModel(MODEL_URL);
     tiles = self.tf.tensor2d(new Float32Array(64 * 1024), [64, 1024], 'float32');
-    keepProb = self.tf.scalar(1.0);
+    keepProb = self.tf.tensor1d([1.0]);
     output = requireSingleTensor(
       model.execute({ Input: tiles, KeepProb: keepProb }, 'probabilities'),
       'probabilities',
@@ -159,29 +164,29 @@ async function recognizePieces(warpedPixels, requestId) {
   postProgress(requestId, 'Recognizing 64 squares locally');
   const inferenceStartedAt = now();
   const inputValues = contract.rgbaToModelTiles(warpedPixels, 256);
-  let tiles;
-  let keepProb;
   let output;
+  let outputNode = 'probabilities';
   try {
-    tiles = self.tf.tensor2d(inputValues, [64, 1024], 'float32');
-    keepProb = self.tf.scalar(1.0);
-
-    let outputNode = 'probabilities';
-    try {
-      output = requireSingleTensor(
-        model.execute({ Input: tiles, KeepProb: keepProb }, outputNode),
-        outputNode,
-      );
-    } catch (probabilitiesError) {
-      // The bundled, hash-pinned model is expected to expose probabilities.
-      // An explicit class-index node remains a truthful compatibility path:
-      // numerical scores are reported as unavailable, never fabricated.
-      outputNode = 'prediction';
-      output = requireSingleTensor(
-        model.execute({ Input: tiles, KeepProb: keepProb }, outputNode),
-        `${outputNode} (probabilities failed: ${errorMessage(probabilitiesError)})`,
-      );
-    }
+    self.tf.tidy(() => {
+      const tiles = self.tf.tensor2d(inputValues, [64, 1024], 'float32');
+      const keepProb = self.tf.tensor1d([1.0]);
+      try {
+        output = requireSingleTensor(
+          model.execute({ Input: tiles, KeepProb: keepProb }, outputNode),
+          outputNode,
+        );
+      } catch (probabilitiesError) {
+        // The bundled, hash-pinned model is expected to expose probabilities.
+        // An explicit class-index node remains a truthful compatibility path:
+        // numerical scores are reported as unavailable, never fabricated.
+        outputNode = 'prediction';
+        output = requireSingleTensor(
+          model.execute({ Input: tiles, KeepProb: keepProb }, outputNode),
+          `${outputNode} (probabilities failed: ${errorMessage(probabilitiesError)})`,
+        );
+      }
+      self.tf.keep(output);
+    });
 
     const values = await output.data();
     state.requestRegistry.assertActive(requestId);
@@ -195,11 +200,10 @@ async function recognizePieces(warpedPixels, requestId) {
       modelLoadMs: lastModelLoadMs,
       requestModelWaitMs,
       inferenceMs: now() - inferenceStartedAt,
+      numTensors: self.tf?.memory?.().numTensors ?? null,
     };
   } finally {
     output?.dispose?.();
-    tiles?.dispose?.();
-    keepProb?.dispose?.();
   }
 }
 

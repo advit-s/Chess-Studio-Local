@@ -71,18 +71,18 @@ describe('fenValidation — validatePosition', () => {
     expect(result.errors.some((e) => e.includes('black pawns'))).toBe(true);
   });
 
-  it('warns about pawns on rank 1 without blocking composed positions', () => {
+  it('rejects pawns on rank 1 as invalid back rank', () => {
     const grid = makeGrid({ 4: 'bk', 60: 'wk', 57: 'wp' });
     const result = validatePosition(grid);
-    expect(result.valid).toBe(true);
-    expect(result.warnings.some((warning) => warning.includes('rank 1'))).toBe(true);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('Pawns detected on an invalid back rank');
   });
 
-  it('warns about pawns on rank 8 without blocking composed positions', () => {
+  it('rejects pawns on rank 8 as invalid back rank', () => {
     const grid = makeGrid({ 4: 'bk', 60: 'wk', 1: 'bp' });
     const result = validatePosition(grid);
-    expect(result.valid).toBe(true);
-    expect(result.warnings.some((warning) => warning.includes('rank 8'))).toBe(true);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('Pawns detected on an invalid back rank');
   });
 
   it('warns rather than rejects unusual composed material', () => {
@@ -143,5 +143,47 @@ describe('fenValidation — hasValidKings', () => {
     grid[60] = 'wk';
     grid[61] = 'wk';
     expect(hasValidKings(grid)).toBe(false);
+  });
+});
+
+describe('fenValidation — custom validation reports', () => {
+  const EMPTY_BOARD = Array(64).fill('empty');
+  function makeGrid(overrides: Record<number, string>): string[] {
+    const grid = [...EMPTY_BOARD];
+    for (const [idx, piece] of Object.entries(overrides)) {
+      grid[Number(idx)] = piece;
+    }
+    return grid;
+  }
+
+  it('reports missing white king and missing black king', () => {
+    const result = validatePosition(EMPTY_BOARD);
+    expect(result.errors).toContain('missing white king');
+    expect(result.errors).toContain('missing black king');
+  });
+
+  it('reports multiple kings', () => {
+    const grid = makeGrid({ 4: 'bk', 5: 'bk', 60: 'wk' });
+    const result = validatePosition(grid);
+    expect(result.errors).toContain('multiple kings');
+  });
+
+  it('reports adjacent kings', () => {
+    const grid = makeGrid({ 12: 'bk', 13: 'wk' });
+    const result = validatePosition(grid);
+    expect(result.errors).toContain('adjacent kings');
+  });
+
+  it('reports excessive pawns', () => {
+    const grid = makeGrid({ 4: 'bk', 60: 'wk' });
+    for (let i = 16; i < 25; i++) grid[i] = 'wp';
+    const result = validatePosition(grid);
+    expect(result.errors).toContain('excessive pawns');
+  });
+
+  it('reports orientation uncertainty', () => {
+    const grid = makeGrid({ 0: 'wk', 63: 'bk' });
+    const result = validatePosition(grid);
+    expect(result.errors).toContain('orientation uncertainty');
   });
 });

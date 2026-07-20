@@ -21,11 +21,16 @@
     "test:code-splitting": "node --test scripts/code-splitting.test.mjs",
     "test:e2e-runner": "node --test scripts/run-e2e.test.mjs",
     "benchmark:ocr": "npm run build:ocr-core && node scripts/benchmark-ocr.mjs",
+    "benchmark:ocr:release": "npm run build:ocr-core && node scripts/benchmark-ocr.mjs --release",
+    "mine:hard-negatives": "node scripts/mine-hard-negatives.mjs",
+    "add-baseline-summary": "node scripts/add-baseline-summary.mjs",
     "verify:ocr-assets": "node scripts/verify-ocr-assets.mjs",
     "test:e2e": "node scripts/run-e2e.mjs",
+    "test:e2e:install": "npx playwright install chromium",
     "smoke:engine": "node scripts/smoke-engine.mjs"
   },
   "dependencies": {
+    "@tensorflow/tfjs": "^4.22.0",
     "chess.js": "1.4.0",
     "react": "19.2.7",
     "react-dom": "19.2.7",
